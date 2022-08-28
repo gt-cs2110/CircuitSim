@@ -127,7 +127,7 @@ import javafx.util.Pair;
  * @author Roi Atalla
  */
 public class CircuitSim extends Application {
-	public static final String VERSION = "1.8.2 2110 version";
+	public static final String VERSION = "1.8.2.1 2110 version";
 	
 	private static boolean mainCalled = false;
 	

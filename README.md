@@ -1,4 +1,4 @@
-CircuitSim v1.8.2
+CircuitSim v1.8.2.1
 =================
 
 NOTE: The CS 2110 fork of CircuitSim is not compatible with upstream CircuitSim
@@ -25,6 +25,13 @@ It is recommended to run with JVM option -Xmx250M to limit the heap size to 250M
 
 Changelog
 =========
+
+1.8.2.1
+=====
+- Note: this does not correspond to an official CircuitSim release, this is basically to shoehorn in some features that haven't officially made it in to CircuitSim yet but are desired for Fall 2022
+- Created new transistor component that checks that p-type and n-type are connected appropriately
+- Renamed level-triggered SR/D Flip-Flop components to SR/D Latch
+
 
 1.8.2
 =====
