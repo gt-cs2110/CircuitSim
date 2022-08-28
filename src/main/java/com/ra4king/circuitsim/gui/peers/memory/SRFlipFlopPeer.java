@@ -23,7 +23,7 @@ import javafx.util.Pair;
  */
 public class SRFlipFlopPeer extends ComponentPeer<SRFlipFlop> {
 	public static void installComponent(ComponentManagerInterface manager) {
-		manager.addComponent(new Pair<>("Memory", "SR Flip-Flop"),
+		manager.addComponent(new Pair<>("Memory", "SR Latch"),
 		                     new Image(SRFlipFlopPeer.class.getResourceAsStream("/images/SRFlipFlop.png")),
 		                     new Properties());
 	}
