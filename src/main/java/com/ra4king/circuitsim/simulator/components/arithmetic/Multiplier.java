@@ -34,7 +34,7 @@ public class Multiplier extends Component {
 		
 		if (state.getLastReceived(getPort(PORT_A)).isValidValue() &&
 		    state.getLastReceived(getPort(PORT_B)).isValidValue() &&
-			state.getLastReceived(getPort(PORT_CARRY_IN)).isValidValue()) {
+		    state.getLastReceived(getPort(PORT_CARRY_IN)).isValidValue()) {
 			long a = state.getLastReceived(getPort(PORT_A)).getValue() & 0xFFFFFFFFL;
 			long b = state.getLastReceived(getPort(PORT_B)).getValue() & 0xFFFFFFFFL;
 			WireValue carry = state.getLastReceived(getPort(PORT_CARRY_IN));

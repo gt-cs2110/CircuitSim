@@ -34,7 +34,7 @@ public class Subtractor extends Component {
 		
 		if (state.getLastReceived(getPort(PORT_A)).isValidValue() &&
 		    state.getLastReceived(getPort(PORT_B)).isValidValue() &&
-			state.getLastReceived(getPort(PORT_CARRY_IN)).isValidValue()) {
+		    state.getLastReceived(getPort(PORT_CARRY_IN)).isValidValue()) {
 			int a = state.getLastReceived(getPort(PORT_A)).getValue();
 			int b = state.getLastReceived(getPort(PORT_B)).getValue();
 			WireValue carry = state.getLastReceived(getPort(PORT_CARRY_IN));
