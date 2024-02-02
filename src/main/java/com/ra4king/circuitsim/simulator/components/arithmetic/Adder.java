@@ -34,7 +34,7 @@ public class Adder extends Component {
 		
 		if (state.getLastReceived(getPort(PORT_A)).isValidValue() &&
 		    state.getLastReceived(getPort(PORT_B)).isValidValue() &&
-			state.getLastReceived(getPort(PORT_CARRY_IN)).isValidValue()) {
+		state.getLastReceived(getPort(PORT_CARRY_IN)).isValidValue()) {
 			WireValue a = state.getLastReceived(getPort(PORT_A));
 			WireValue b = state.getLastReceived(getPort(PORT_B));
 			WireValue c = state.getLastReceived(getPort(PORT_CARRY_IN));
