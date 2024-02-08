@@ -7,6 +7,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Reader;
 import java.security.MessageDigest;
+import java.time.ZonedDateTime;
+import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -269,6 +271,13 @@ public class FileFormat {
 			return this.color;
 		}
 
+		private long getLastEditTimestamp() {
+			return this.revisionSignatures.stream()
+				.mapToLong(revStr -> Long.parseLong(new RevisionSignatureBlock(revStr).timeStamp))
+				.max()
+				.orElseThrow(() -> new NullPointerException("File is corrupted. Contact Course Staff for Assistance."));
+		}
+
 		public CircuitFile(int globalBitSize, int clockSpeed, Set<String> libraryPaths, List<CircuitInfo> circuits,
 						   List<String> revisionSignatures, Color color, List<String> copiedBlocks) {
 			this(
@@ -386,11 +395,13 @@ public class FileFormat {
 		}
 		
 		// Try to load the color
-		// Under TA debug mode, if something crashes, just treat it like a normal file
+		// If in TA debug mode, ignore color failure and treat as a default color profile.
+		// This feature was implemented for Fall 2024 and beyond. In order to be backwards-compatible,
+		// allow any files that were last edited before Fall 2024.
 		try {
 			savedFile.color = FileFormat.getColor(savedFile.examVersion, savedFile.revisionSignatures.get(0));
 		} catch (CannotValidateFileException e) {
-			if (!taDebugMode) {
+			if (!taDebugMode && savedFile.getLastEditTimestamp() >= ZonedDateTime.of(2024, 8, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant().toEpochMilli()) {
 				throw new NullPointerException(e.getMessage());
 			} else {
 				savedFile.color = null;
