@@ -396,15 +396,20 @@ public class FileFormat {
 		
 		// Try to load the color
 		// If in TA debug mode, ignore color failure and treat as a default color profile.
-		// This feature was implemented for Fall 2024 and beyond. In order to be backwards-compatible,
+		
+		// The color feature was implemented for Fall 2024 and beyond. In order to be backwards-compatible,
 		// allow any files that were last edited before Fall 2024.
-		try {
-			savedFile.color = FileFormat.getColor(savedFile.examVersion, savedFile.revisionSignatures.get(0));
-		} catch (CannotValidateFileException e) {
-			if (!taDebugMode && savedFile.getLastEditTimestamp() >= ZonedDateTime.of(2024, 8, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant().toEpochMilli()) {
-				throw new NullPointerException(e.getMessage());
-			} else {
-				savedFile.color = null;
+		if (savedFile.examVersion == null && savedFile.getLastEditTimestamp() < ZonedDateTime.of(2024, 8, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant().toEpochMilli()) {
+			savedFile.color = null;
+		} else {
+			try {
+				savedFile.color = FileFormat.getColor(savedFile.examVersion, savedFile.revisionSignatures.get(0));
+			} catch (CannotValidateFileException e) {
+				if (!taDebugMode) {
+					throw new NullPointerException(e.getMessage());
+				} else {
+					savedFile.color = null;
+				}
 			}
 		}
 
