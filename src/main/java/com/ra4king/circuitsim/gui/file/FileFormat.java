@@ -180,11 +180,14 @@ public class FileFormat {
 		public final Set<String> libraryPaths;
 		public final List<CircuitInfo> circuits;
 		public final List<String> revisionSignatures;
-		public String examVersion;
 		private List<String> copiedBlocks;
+		
+		// If constructed by a provided constructor, this is null until the file is saved.
+		public String examVersion;
 
-		// Don't upload color to file.
-		private final transient Color color;
+		// This is not transported to the file 
+		// as this info should already be encoded in examVersion.
+		private transient Color color;
 		
 		public CircuitFile(String version, int globalBitSize, int clockSpeed, Set<String> libraryPaths, List<CircuitInfo> circuits,
 						   List<String> revisionSignatures, Color color, List<String> copiedBlocks) {
@@ -241,7 +244,7 @@ public class FileFormat {
 			return this.copiedBlocks;
 		}
 		
-		public void encodeExamVersion() {
+		private void encodeExamVersion() {
 			if (!this.revisionSignatures.isEmpty()) {
 				RevisionSignatureBlock block = new RevisionSignatureBlock(this.revisionSignatures.get(0));
 			
@@ -263,11 +266,7 @@ public class FileFormat {
 		}
 
 		public Color getColor() {
-			try {
-				return FileFormat.getColor(examVersion, this.revisionSignatures.get(0));
-			} catch (CannotValidateFileException e) {
-				throw new NullPointerException(e.getMessage());
-			}
+			return this.color;
 		}
 
 		public CircuitFile(int globalBitSize, int clockSpeed, Set<String> libraryPaths, List<CircuitInfo> circuits,
@@ -382,15 +381,22 @@ public class FileFormat {
 			throw new NullPointerException("File is empty!");
 		}
 
-		if (!taDebugMode) {
-			if (!savedFile.revisionSignaturesAreValid()) {
-				throw new NullPointerException("File is corrupted. Contact Course Staff for Assistance.");
-			}
-
-			// Verify that the colors are actually loadable by calling it:
-			savedFile.getColor();
+		if (!taDebugMode && !savedFile.revisionSignaturesAreValid()) {
+			throw new NullPointerException("File is corrupted. Contact Course Staff for Assistance.");
 		}
 		
+		// Try to load the color
+		// Under TA debug mode, if something crashes, just treat it like a normal file
+		try {
+			savedFile.color = FileFormat.getColor(savedFile.examVersion, savedFile.revisionSignatures.get(0));
+		} catch (CannotValidateFileException e) {
+			if (!taDebugMode) {
+				throw new NullPointerException(e.getMessage());
+			} else {
+				savedFile.color = null;
+			}
+		}
+
 		return savedFile;
 	}
 	
