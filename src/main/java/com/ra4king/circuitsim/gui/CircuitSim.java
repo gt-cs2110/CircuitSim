@@ -205,6 +205,7 @@ public class CircuitSim extends Application {
 	
     private List<String> revisionSignatures;
     private List<String> copiedBlocks;
+	private Color bgColor;
 
 	/**
 	 * Throws an exception if instantiated directly
@@ -1163,6 +1164,7 @@ public class CircuitSim extends Application {
 																								   		     components,
 																								   			 wires)),
 														 		   revisionSignatures,
+																   bgColor,
 														 		   copiedBlocks));
 				
 				Clipboard clipboard = Clipboard.getSystemClipboard();
@@ -1499,7 +1501,8 @@ public class CircuitSim extends Application {
 						CircuitFile circuitFile = FileFormat.load(lastSaveFile, taDebugMode);
 
                         this.revisionSignatures = circuitFile.revisionSignatures;
-						
+						this.bgColor = circuitFile.getColor();
+
 						if (circuitFile.circuits == null) {
 							throw new NullPointerException("File missing circuits");
 						}
@@ -1695,6 +1698,9 @@ public class CircuitSim extends Application {
 		}
 	}
 	
+	Color getBgColor() {
+		return bgColor;
+	}
 	
 	/**
 	 * Get the last saved file.
@@ -1795,6 +1801,7 @@ public class CircuitSim extends Application {
 					                                   libraryPaths,
 					                                   circuits,
                                                        revisionSignatures,
+													   bgColor,
                                                        copiedBlocks));
                     copiedBlocks.clear();
 					savedEditStackSize = editHistory.editStackSize();

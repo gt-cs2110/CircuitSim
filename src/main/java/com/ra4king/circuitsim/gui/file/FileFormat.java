@@ -19,6 +19,8 @@ import com.google.gson.GsonBuilder;
 import com.ra4king.circuitsim.gui.CircuitSim;
 import com.ra4king.circuitsim.gui.Properties;
 
+import javafx.scene.paint.Color;
+
 /**
  * @author Roi Atalla
  */
@@ -130,6 +132,47 @@ public class FileFormat {
 		}
 	}
 
+	private static class CannotValidateFileException extends Exception {
+		public CannotValidateFileException(String msg) {
+			super(msg);
+		}
+	}
+
+	public static long DEFAULT_COLOR_HASH = 0x2E67726173732E21L;
+	/**
+	 * @return the color from the file, or Optional.empty if the default color
+	 * @throws CannotValidateFileException if this is not a valid color
+	 */
+	private static Color getColor(String exBlock, String revBlock)
+		throws CannotValidateFileException
+	{
+		if (exBlock != null) {
+			RevisionSignatureBlock block = new RevisionSignatureBlock(revBlock);
+			
+			long rev = Long.parseUnsignedLong(block.currentHash.substring(0, 16), 16);
+			long  ex = Long.parseUnsignedLong(exBlock, 16);
+			
+			long data = rev ^ ex;
+	
+			// Default
+			if (data == DEFAULT_COLOR_HASH) {
+				return null;
+			}
+			
+			if ((data & 0xFFFF) == 0) {
+				data >>>= 16;
+	
+				if ((data & 0xFFFFFF) == (data >>> 24)) {
+					// Convert color hex to Color
+					int c = (int) data & 0xFFFFFF;
+					return Color.rgb((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
+				}
+			}
+		}
+
+		throw new CannotValidateFileException("File is corrupted. Contact Course Staff for Assistance.");
+	}
+
 	public static class CircuitFile {
 		public final String version;
 		public final int globalBitSize;
@@ -137,17 +180,23 @@ public class FileFormat {
 		public final Set<String> libraryPaths;
 		public final List<CircuitInfo> circuits;
 		public final List<String> revisionSignatures;
+		public String examVersion;
 		private List<String> copiedBlocks;
+
+		// Don't upload color to file.
+		private final transient Color color;
 		
 		public CircuitFile(String version, int globalBitSize, int clockSpeed, Set<String> libraryPaths, List<CircuitInfo> circuits,
-						   List<String> revisionSignatures, List<String> copiedBlocks) {
+						   List<String> revisionSignatures, Color color, List<String> copiedBlocks) {
 			this.version = version;
 			this.globalBitSize = globalBitSize;
 			this.clockSpeed = clockSpeed;
 			this.libraryPaths = libraryPaths;
 			this.circuits = circuits;
 			this.revisionSignatures = revisionSignatures;
+			this.examVersion = null;
 			this.copiedBlocks = copiedBlocks;
+			this.color = color;
 		}
 
 
@@ -192,9 +241,47 @@ public class FileFormat {
 			return this.copiedBlocks;
 		}
 		
+		public void encodeExamVersion() {
+			if (!this.revisionSignatures.isEmpty()) {
+				RevisionSignatureBlock block = new RevisionSignatureBlock(this.revisionSignatures.get(0));
+			
+				long rev = Long.parseUnsignedLong(block.currentHash.substring(0, 16), 16);
+				
+				if (color == null) {
+					// Default
+					this.examVersion = Long.toUnsignedString(rev ^ DEFAULT_COLOR_HASH, 16);
+				} else {
+					long r = (long) (this.color.getRed() * 255);
+					long g = (long) (this.color.getGreen() * 255);
+					long b = (long) (this.color.getBlue() * 255);
+					long color = (r << 16) | (g << 8) | b;
+					this.examVersion = Long.toUnsignedString(rev ^ (color << 28) ^ (color << 4), 16);
+				}
+			} else {
+				this.examVersion = null;
+			}
+		}
+
+		public Color getColor() {
+			try {
+				return FileFormat.getColor(examVersion, this.revisionSignatures.get(0));
+			} catch (CannotValidateFileException e) {
+				throw new NullPointerException(e.getMessage());
+			}
+		}
+
 		public CircuitFile(int globalBitSize, int clockSpeed, Set<String> libraryPaths, List<CircuitInfo> circuits,
-						   List<String> revisionSignatures, List<String> copiedBlocks) {
-			this(CircuitSim.VERSION, globalBitSize, clockSpeed, libraryPaths, circuits, revisionSignatures, copiedBlocks);
+						   List<String> revisionSignatures, Color color, List<String> copiedBlocks) {
+			this(
+				CircuitSim.VERSION, 
+				globalBitSize, 
+				clockSpeed, 
+				libraryPaths, 
+				circuits, 
+				revisionSignatures, 
+				color, 
+				copiedBlocks
+			);
 		}
 	}
 	
@@ -281,6 +368,7 @@ public class FileFormat {
 	
 	public static void save(File file, CircuitFile circuitFile) throws IOException {
 		circuitFile.addRevisionSignatureBlock();
+		circuitFile.encodeExamVersion();
 		writeFile(file, stringify(circuitFile));
 	}
 	
@@ -293,9 +381,16 @@ public class FileFormat {
 		if (savedFile == null) {
 			throw new NullPointerException("File is empty!");
 		}
-		if (!taDebugMode && !savedFile.revisionSignaturesAreValid()) {
-			throw new NullPointerException("File is corrupted. Contact Course Staff for Assistance.");
+
+		if (!taDebugMode) {
+			if (!savedFile.revisionSignaturesAreValid()) {
+				throw new NullPointerException("File is corrupted. Contact Course Staff for Assistance.");
+			}
+
+			// Verify that the colors are actually loadable by calling it:
+			savedFile.getColor();
 		}
+		
 		return savedFile;
 	}
 	
