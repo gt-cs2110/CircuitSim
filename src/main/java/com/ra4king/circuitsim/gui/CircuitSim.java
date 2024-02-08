@@ -2539,7 +2539,6 @@ public class CircuitSim extends Application {
 					modifiedSelection(null);
 				}
 			});
-      // button.setBackground(new Background(new BackgroundFill(Color.LIGHTPINK, null, null)));
 			return button;
 		};
 		
@@ -2579,8 +2578,10 @@ public class CircuitSim extends Application {
 		                          new Label("Scale:"),
 		                          scaleFactorSelect);
 
-    toolBar.setBackground(new Background(new BackgroundFill(Color.YELLOW, null, null)));
-		
+		// Add CS 2110 background to differentiate between base and upstream:
+		toolBar.setStyle("-fx-base: #FFDFDF");
+		//
+
 		VBox.setVgrow(canvasPropsSplit, Priority.ALWAYS);
 		scene = new Scene(new VBox(menuBar, toolBar, canvasPropsSplit));
 		scene.setCursor(Cursor.DEFAULT);
