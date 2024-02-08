@@ -2539,6 +2539,7 @@ public class CircuitSim extends Application {
 					modifiedSelection(null);
 				}
 			});
+      // button.setBackground(new Background(new BackgroundFill(Color.LIGHTPINK, null, null)));
 			return button;
 		};
 		
@@ -2577,6 +2578,8 @@ public class CircuitSim extends Application {
 		                          blank,
 		                          new Label("Scale:"),
 		                          scaleFactorSelect);
+
+    toolBar.setBackground(new Background(new BackgroundFill(Color.YELLOW, null, null)));
 		
 		VBox.setVgrow(canvasPropsSplit, Priority.ALWAYS);
 		scene = new Scene(new VBox(menuBar, toolBar, canvasPropsSplit));
