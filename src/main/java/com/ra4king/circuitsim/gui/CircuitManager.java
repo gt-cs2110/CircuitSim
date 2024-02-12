@@ -898,7 +898,14 @@ public class CircuitManager {
 							                             lastMousePosition.getY() - selectedElement.getScreenY());
 						} else if (isCtrlDown) {
 							Set<GuiElement> elements = new HashSet<>(getSelectedElements());
-							elements.add(selectedElement);
+
+							// toggle selected element
+							if (elements.contains(selectedElement)) {
+								elements.remove(selectedElement);
+							} else {
+								elements.add(selectedElement);
+							}
+
 							setSelectedElements(elements);
 						} else if (!getSelectedElements().contains(selectedElement)) {
 							setSelectedElements(Collections.singleton(selectedElement));
@@ -977,14 +984,19 @@ public class CircuitManager {
 				break;
 			
 			case CONNECTION_SELECTED: {
-				Set<Connection>
-					connections =
-					circuitBoard.getConnections(startConnection.getX(), startConnection.getY());
+				Set<GuiElement> selectedEls = new HashSet<>(isCtrlDown ? getSelectedElements() : Set.of());
+
+				for (Connection c : circuitBoard.getConnections(startConnection.getX(), startConnection.getY())) {
+					GuiElement el = c.getParent();
+					// toggle wire
+					if (selectedEls.contains(el)) {
+						selectedEls.remove(el);
+					} else {
+						selectedEls.add(el);
+					}
+				}
 				
-				setSelectedElements(Stream
-					                    .concat(isCtrlDown ? getSelectedElements().stream() : Stream.empty(),
-					                            connections.stream().map(Connection::getParent))
-					                    .collect(Collectors.toSet()));
+				setSelectedElements(selectedEls);
 				currentState = SelectingState.IDLE;
 				break;
 			}
