@@ -676,7 +676,7 @@ public class CircuitManager {
 	}
 	
 	public void keyTyped(KeyEvent e) {
-		if (selectedElements.size() == 1) {
+		if (selectedElements.size() == 1 && !e.isShortcutDown()) {
 			GuiElement element = selectedElements.iterator().next();
 			element.keyTyped(this, circuitBoard.getCurrentState(), e.getCharacter());
 			setNeedsRepaint();

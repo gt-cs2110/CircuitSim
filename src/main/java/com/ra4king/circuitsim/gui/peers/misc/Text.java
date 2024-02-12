@@ -87,29 +87,43 @@ public class Text extends ComponentPeer<Component> {
 		entered = false;
 	}
 	
+	private boolean backspaceDown;
 	@Override
 	public boolean keyPressed(CircuitManager manager, CircuitState state, KeyCode keyCode, String text) {
+		if (keyCode == KeyCode.BACK_SPACE) {
+			backspaceDown = true;
+		}
 		return keyCode == KeyCode.BACK_SPACE && !this.text.isEmpty();
 	}
 	
 	@Override
+	public void keyReleased(CircuitManager manager, CircuitState state, KeyCode keyCode, String text) {
+		if (keyCode == KeyCode.BACK_SPACE) {
+			backspaceDown = false;
+		}
+		super.keyReleased(manager, state, keyCode, text);
+	}
+
+	@Override
 	public void keyTyped(CircuitManager manager, CircuitState state, String character) {
-		char c = character.charAt(0);
-		
-		if (c == 8) { // backspace
-			if (!text.isEmpty()) {
+		if (character.isEmpty()) {
+			if (backspaceDown && !text.isEmpty()) {
 				String s = text.substring(0, text.length() - 1);
 				setText(s);
 				getProperties().setValue(TEXT, s);
 			}
-		} else if (c == 10 || c == 13 || c >= 32 && c <= 126) { // line feed, carriage return, or visible ASCII char 
-			if (c == 13) {
-				c = 10; // convert \r to \n
-			}
+		} else {
+			char c = character.charAt(0);
 			
-			String s = text + c;
-			setText(s);
-			getProperties().setValue(TEXT, s);
+			if (c == 10 || c == 13 || c >= 32 && c <= 126) { // line feed, carriage return, or visible ASCII char 
+				if (c == 13) {
+					c = 10; // convert \r to \n
+				}
+				
+				String s = text + c;
+				setText(s);
+				getProperties().setValue(TEXT, s);
+			}
 		}
 	}
 	
