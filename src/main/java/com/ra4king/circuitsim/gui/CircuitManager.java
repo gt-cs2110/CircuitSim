@@ -625,6 +625,10 @@ public class CircuitManager {
 		
 		setNeedsRepaint();
 		
+		if (e.isShortcutDown()) {
+			isCtrlDown = true;
+		}
+
 		switch (e.getCode()) {
 			case RIGHT: {
 				e.consume();
@@ -646,9 +650,6 @@ public class CircuitManager {
 				handleArrowPressed(Direction.SOUTH);
 				break;
 			}
-			case CONTROL:
-				isCtrlDown = true;
-				break;
 			case SHIFT:
 				if (currentState != SelectingState.CONNECTION_SELECTED &&
 				    currentState != SelectingState.CONNECTION_DRAGGED) {
@@ -683,15 +684,15 @@ public class CircuitManager {
 	}
 	
 	public void keyReleased(KeyEvent e) {
-		switch (e.getCode()) {
-			case CONTROL -> {
+		if (e.getCode().isModifierKey()) {
+			if (!e.isShortcutDown()) {
 				isCtrlDown = false;
 				setNeedsRepaint();
 			}
-			case SHIFT -> {
+			if (!e.isShiftDown()) {
 				simulatorWindow.setClickMode(false);
-				isShiftDown = false;
-				setNeedsRepaint();
+					isShiftDown = false;
+					setNeedsRepaint();
 			}
 		}
 		
