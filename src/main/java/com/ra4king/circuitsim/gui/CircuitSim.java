@@ -2286,21 +2286,36 @@ public class CircuitSim extends Application {
 		
 		MenuItem copy = new MenuItem("Copy");
 		copy.setAccelerator(new KeyCodeCombination(KeyCode.C, KeyCombination.SHORTCUT_DOWN));
-		copy.setOnAction(event -> copySelectedComponents());
+		copy.setOnAction(event -> {
+			CircuitManager manager = getCurrentCircuit();
+			if (manager != null && manager.getCanvas().isFocused()) {
+				copySelectedComponents();
+			}
+		});
 		
 		MenuItem cut = new MenuItem("Cut");
 		cut.setAccelerator(new KeyCodeCombination(KeyCode.X, KeyCombination.SHORTCUT_DOWN));
-		cut.setOnAction(event -> cutSelectedComponents());
+		cut.setOnAction(event -> {
+			CircuitManager manager = getCurrentCircuit();
+			if (manager != null && manager.getCanvas().isFocused()) {
+				cutSelectedComponents();
+			}
+		});
 		
 		MenuItem paste = new MenuItem("Paste");
 		paste.setAccelerator(new KeyCodeCombination(KeyCode.V, KeyCombination.SHORTCUT_DOWN));
-		paste.setOnAction(event -> pasteFromClipboard());
+		paste.setOnAction(event -> {
+			CircuitManager manager = getCurrentCircuit();
+			if (manager != null && manager.getCanvas().isFocused()) {
+				pasteFromClipboard();
+			}
+		});
 		
 		MenuItem selectAll = new MenuItem("Select All");
 		selectAll.setAccelerator(new KeyCodeCombination(KeyCode.A, KeyCombination.SHORTCUT_DOWN));
 		selectAll.setOnAction(event -> {
 			CircuitManager manager = getCurrentCircuit();
-			if (manager != null) {
+			if (manager != null && manager.getCanvas().isFocused()) {
 				manager.setSelectedElements(Stream
 					                            .concat(manager.getCircuitBoard().getComponents().stream(),
 					                                    manager
