@@ -7,6 +7,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Reader;
 import java.security.MessageDigest;
+import java.time.ZonedDateTime;
+import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -18,6 +20,8 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.ra4king.circuitsim.gui.CircuitSim;
 import com.ra4king.circuitsim.gui.Properties;
+
+import javafx.scene.paint.Color;
 
 /**
  * @author Roi Atalla
@@ -130,6 +134,47 @@ public class FileFormat {
 		}
 	}
 
+	private static class CannotValidateFileException extends Exception {
+		public CannotValidateFileException(String msg) {
+			super(msg);
+		}
+	}
+
+	public static long DEFAULT_COLOR_HASH = 0x2E67726173732E21L;
+	/**
+	 * @return the color from the file, or Optional.empty if the default color
+	 * @throws CannotValidateFileException if this is not a valid color
+	 */
+	private static Color getColor(String exBlock, String revBlock)
+		throws CannotValidateFileException
+	{
+		if (exBlock != null) {
+			RevisionSignatureBlock block = new RevisionSignatureBlock(revBlock);
+			
+			long rev = Long.parseUnsignedLong(block.currentHash.substring(0, 16), 16);
+			long  ex = Long.parseUnsignedLong(exBlock, 16);
+			
+			long data = rev ^ ex;
+	
+			// Default
+			if (data == DEFAULT_COLOR_HASH) {
+				return null;
+			}
+			
+			if ((data & 0xFFFF) == 0) {
+				data >>>= 16;
+	
+				if ((data & 0xFFFFFF) == (data >>> 24)) {
+					// Convert color hex to Color
+					int c = (int) data & 0xFFFFFF;
+					return Color.rgb((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
+				}
+			}
+		}
+
+		throw new CannotValidateFileException("File is corrupted. Contact Course Staff for Assistance.");
+	}
+
 	public static class CircuitFile {
 		public final String version;
 		public final int globalBitSize;
@@ -139,15 +184,24 @@ public class FileFormat {
 		public final List<String> revisionSignatures;
 		private List<String> copiedBlocks;
 		
+		// If constructed by a provided constructor, this is null until the file is saved.
+		public String examVersion;
+
+		// This is not transported to the file 
+		// as this info should already be encoded in examVersion.
+		private transient Color color;
+		
 		public CircuitFile(String version, int globalBitSize, int clockSpeed, Set<String> libraryPaths, List<CircuitInfo> circuits,
-						   List<String> revisionSignatures, List<String> copiedBlocks) {
+						   List<String> revisionSignatures, Color color, List<String> copiedBlocks) {
 			this.version = version;
 			this.globalBitSize = globalBitSize;
 			this.clockSpeed = clockSpeed;
 			this.libraryPaths = libraryPaths;
 			this.circuits = circuits;
 			this.revisionSignatures = revisionSignatures;
+			this.examVersion = null;
 			this.copiedBlocks = copiedBlocks;
+			this.color = color;
 		}
 
 
@@ -192,9 +246,50 @@ public class FileFormat {
 			return this.copiedBlocks;
 		}
 		
+		private void encodeExamVersion() {
+			if (!this.revisionSignatures.isEmpty()) {
+				RevisionSignatureBlock block = new RevisionSignatureBlock(this.revisionSignatures.get(0));
+			
+				long rev = Long.parseUnsignedLong(block.currentHash.substring(0, 16), 16);
+				
+				if (color == null) {
+					// Default
+					this.examVersion = Long.toUnsignedString(rev ^ DEFAULT_COLOR_HASH, 16);
+				} else {
+					long r = (long) (this.color.getRed() * 255);
+					long g = (long) (this.color.getGreen() * 255);
+					long b = (long) (this.color.getBlue() * 255);
+					long color = (r << 16) | (g << 8) | b;
+					this.examVersion = Long.toUnsignedString(rev ^ (color << 28) ^ (color << 4), 16);
+				}
+			} else {
+				this.examVersion = null;
+			}
+		}
+
+		public Color getColor() {
+			return this.color;
+		}
+
+		private long getLastEditTimestamp() {
+			return this.revisionSignatures.stream()
+				.mapToLong(revStr -> Long.parseLong(new RevisionSignatureBlock(revStr).timeStamp))
+				.max()
+				.orElseThrow(() -> new NullPointerException("File is corrupted. Contact Course Staff for Assistance."));
+		}
+
 		public CircuitFile(int globalBitSize, int clockSpeed, Set<String> libraryPaths, List<CircuitInfo> circuits,
-						   List<String> revisionSignatures, List<String> copiedBlocks) {
-			this(CircuitSim.VERSION, globalBitSize, clockSpeed, libraryPaths, circuits, revisionSignatures, copiedBlocks);
+						   List<String> revisionSignatures, Color color, List<String> copiedBlocks) {
+			this(
+				CircuitSim.VERSION, 
+				globalBitSize, 
+				clockSpeed, 
+				libraryPaths, 
+				circuits, 
+				revisionSignatures, 
+				color, 
+				copiedBlocks
+			);
 		}
 	}
 	
@@ -281,6 +376,7 @@ public class FileFormat {
 	
 	public static void save(File file, CircuitFile circuitFile) throws IOException {
 		circuitFile.addRevisionSignatureBlock();
+		circuitFile.encodeExamVersion();
 		writeFile(file, stringify(circuitFile));
 	}
 	
@@ -293,9 +389,30 @@ public class FileFormat {
 		if (savedFile == null) {
 			throw new NullPointerException("File is empty!");
 		}
+
 		if (!taDebugMode && !savedFile.revisionSignaturesAreValid()) {
 			throw new NullPointerException("File is corrupted. Contact Course Staff for Assistance.");
 		}
+		
+		// Try to load the color
+		// If in TA debug mode, ignore color failure and treat as a default color profile.
+		
+		// The color feature was implemented for Fall 2024 and beyond. In order to be backwards-compatible,
+		// allow any files that were last edited before Fall 2024.
+		if (savedFile.examVersion == null && savedFile.getLastEditTimestamp() < ZonedDateTime.of(2024, 8, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant().toEpochMilli()) {
+			savedFile.color = null;
+		} else {
+			try {
+				savedFile.color = FileFormat.getColor(savedFile.examVersion, savedFile.revisionSignatures.get(0));
+			} catch (CannotValidateFileException e) {
+				if (!taDebugMode) {
+					throw new NullPointerException(e.getMessage());
+				} else {
+					savedFile.color = null;
+				}
+			}
+		}
+
 		return savedFile;
 	}
 	
