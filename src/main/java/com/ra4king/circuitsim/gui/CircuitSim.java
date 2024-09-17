@@ -631,6 +631,7 @@ public class CircuitSim extends Application {
 			
 			Pair<ComponentLauncherInfo, CircuitManager> removed = circuitManagers.remove(tab.getText());
 			circuitModified(removed.getValue().getCircuit(), null, false);
+			removed.getValue().destroy();
 			
 			editHistory.addAction(EditAction.DELETE_CIRCUIT, manager, tab, idx);
 			
