@@ -7,7 +7,10 @@ import com.ra4king.circuitsim.gui.ComponentManager.ComponentManagerInterface;
 import com.ra4king.circuitsim.gui.ComponentPeer;
 import com.ra4king.circuitsim.gui.Connection.PortConnection;
 import com.ra4king.circuitsim.gui.GuiUtils;
+import com.ra4king.circuitsim.gui.properties.IntegerString;
 import com.ra4king.circuitsim.gui.Properties;
+import com.ra4king.circuitsim.gui.Properties.Base;
+import com.ra4king.circuitsim.gui.Properties.Property;
 import com.ra4king.circuitsim.simulator.CircuitState;
 import com.ra4king.circuitsim.simulator.WireValue;
 import com.ra4king.circuitsim.simulator.components.wiring.Constant;
@@ -39,16 +42,29 @@ public class ConstantPeer extends ComponentPeer<Constant> {
 		properties.ensureProperty(Properties.DIRECTION);
 		properties.ensureProperty(Properties.BITSIZE);
 		properties.ensureProperty(Properties.BASE);
-		properties.ensureProperty(Properties.VALUE);
 		properties.mergeIfExists(props);
+
+		// Value property:
+		// This property is a bit different, since
+		// it depends on the value of BASE and its input text changes when BASE changes.
+		//
+		// To handle this, we will create and merge the value property separately.
+		Base base = properties.getValue(Properties.BASE);
+		Property<IntegerString> valueProperty = Properties.VALUE(base.value);
+		properties.ensureProperty(valueProperty);
+		
+		IntegerString oldValue = props.getValue(valueProperty.name);
+		if (oldValue != null) {
+			properties.parseAndSetValue(valueProperty, oldValue.prefixedString());
+		}
 		
 		Constant constant = new Constant(
 			properties.getValue(Properties.LABEL),
 			properties.getValue(Properties.BITSIZE),
-			properties.getValue(Properties.VALUE).getValue());
+			properties.getValue(valueProperty).getValue());
 		
 		int bitSize = constant.getBitSize();
-		switch (properties.getValue(Properties.BASE)) {
+		switch (base) {
 			case BINARY -> {
 				setWidth(Math.max(2, Math.min(8, bitSize)));
 				setHeight((int)Math.round((1 + (bitSize - 1) / 8) * 1.5));
