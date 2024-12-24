@@ -3,6 +3,7 @@ package com.ra4king.circuitsim.gui.properties;
 import java.util.Objects;
 
 import com.ra4king.circuitsim.simulator.SimulationException;
+import com.ra4king.circuitsim.gui.Properties.PropertyValidator;
 
 /**
  * A wrapper around integers which can be constructed from strings of different bases.
@@ -130,5 +131,34 @@ public final class IntegerString {
 	@Override
 	public String toString() {
 		return this.valueString;
+	}
+
+	public static final class IntegerStringValidator implements PropertyValidator<IntegerString> {
+		private final int base;
+		public IntegerStringValidator() {
+			this(10);
+		}
+		public IntegerStringValidator(int base) {
+			this.base = base;
+		}
+
+		@Override
+		public int hashCode() {
+			return Integer.hashCode(this.base);
+		}
+		
+		@Override
+		public boolean equals(Object other) {
+			if (other instanceof IntegerStringValidator) {
+				IntegerStringValidator validator = (IntegerStringValidator) other;
+				return this.base == validator.base;
+			}
+			
+			return true;
+		}
+		@Override
+		public IntegerString parse(String value) {
+			return new IntegerString(value, this.base);
+		}
 	}
 }
