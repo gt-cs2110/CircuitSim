@@ -102,18 +102,6 @@ public final class IntegerString {
 		return base;
 	}
 	
-	/**
-	 * @return the string representation of this value (with an explicit prefix)
-	 */
-	public String prefixedString() {
-		return switch (base) {
-			case 2  -> String.format("0b%s", Integer.toString(value, 2));
-			case 10 -> String.format("#%d", value);
-			case 16 -> String.format("0x%X", value);
-			default -> Integer.toString(value);
-		};
-	}
-
 	@Override
 	public boolean equals(Object o) {
 		if (o instanceof IntegerString) {
@@ -131,6 +119,15 @@ public final class IntegerString {
 	@Override
 	public String toString() {
 		return this.valueString;
+	}
+
+	/**
+	 * Identical to `Integer.toString(getValue(), radix)`.
+	 * @param radix Base to cast to string
+	 * @return the string representation
+	 */
+	public String toString(int radix) {
+		return Integer.toString(this.value, radix);
 	}
 
 	public static final class IntegerStringValidator implements PropertyValidator<IntegerString> {

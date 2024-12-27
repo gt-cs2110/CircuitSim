@@ -42,22 +42,34 @@ public class ConstantPeer extends ComponentPeer<Constant> {
 		properties.ensureProperty(Properties.DIRECTION);
 		properties.ensureProperty(Properties.BITSIZE);
 		properties.ensureProperty(Properties.BASE);
+		
+		// VALUE property:
+		// This property depends on BASE. So we have to merge BASE first so the value is updated,
+		// before we can create VALUE (we actually merge every property except VALUE, but that's fine).
+		//
+		// Then, we create VALUE. Finally, we update it with the old value (if one exists).
+		// This is also special for VALUE, because for IntegerString values, 
+		// it should update to reflect the new base.
+		// So, if the old value was an IntegerString, we override the default.
+		Property<?> oldValueProperty = props.getProperty(Properties.VALUE.name);
+		properties.clearProperty(Properties.VALUE.name);
 		properties.mergeIfExists(props);
 
-		// Value property:
-		// This property is a bit different, since
-		// it depends on the value of BASE and its input text changes when BASE changes.
-		//
-		// To handle this, we will create and merge the value property separately.
 		Base base = properties.getValue(Properties.BASE);
 		Property<IntegerString> valueProperty = Properties.VALUE(base.value);
 		properties.ensureProperty(valueProperty);
-		
-		IntegerString oldValue = props.getValue(valueProperty.name);
-		if (oldValue != null) {
-			properties.parseAndSetValue(valueProperty, oldValue.prefixedString());
+
+		if (oldValueProperty != null) {
+			if (oldValueProperty.value instanceof IntegerString) {
+				// Replace with value in new base:
+				String newText = ((IntegerString) oldValueProperty.value).toString(base.value);
+				properties.parseAndSetValue(valueProperty, newText);
+			} else {
+				properties.updateIfExists(oldValueProperty);
+			}
 		}
-		
+		//
+
 		Constant constant = new Constant(
 			properties.getValue(Properties.LABEL),
 			properties.getValue(Properties.BITSIZE),
