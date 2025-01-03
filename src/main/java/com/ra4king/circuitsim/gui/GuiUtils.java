@@ -91,10 +91,31 @@ public class GuiUtils {
 		}
 	}
 	
+	/**
+	 * Converts a coordinate value in the canvas coordinate system to the circuit coordinate system.
+	 * 
+	 * See CircuitManager for details about the coordinate systems.
+	 * 
+	 * @param a a canvas coordinate value
+	 * @return a circuit coordinate value
+	 * 
+	 * @see com.ra4king.circuitsim.gui.CircuitManager CircuitManager
+	 */
 	public static int getCircuitCoord(double a) {
 		return ((int)Math.round(a) + BLOCK_SIZE / 2) / BLOCK_SIZE;
 	}
 	
+	/**
+	 * Converts a coordinate value in the canvas coordinate system to the canvas coordinate
+	 * that corresponds to the center of the circuit tile.
+	 * 
+	 * See CircuitManager for details about the coordinate systems.
+	 * 
+	 * @param a a canvas coordinate value
+	 * @return a new canvas coordinate value
+	 * 
+	 * @see com.ra4king.circuitsim.gui.CircuitManager CircuitManager
+	 */
 	public static int getScreenCircuitCoord(double a) {
 		return getCircuitCoord(a) * BLOCK_SIZE;
 	}

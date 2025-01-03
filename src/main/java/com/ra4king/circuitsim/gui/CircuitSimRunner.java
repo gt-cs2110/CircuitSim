@@ -111,20 +111,29 @@ public class CircuitSimRunner {
 				return;
 			}
 
-			try {
-				tempDir = Files.createTempDirectory("circuitsim-libs");
-			} catch (IOException exc) {
-				tempDir = null;
-				throw new RuntimeException("Couldn't create temporary directory for native libraries", exc);
-			}
-
 			String arch = guessArchitecture();
 
 			String archDirPathName = "/" + arch;
 			URL archDirResource = NativeLibraryExtractor.class.getResource(archDirPathName);
 
 			if (archDirResource == null) {
-				throw new RuntimeException("Can't find native libraries for architecture " + arch);
+				// Note that ./gradlew run doesn't perform the same copying process that
+				// ./gradlew jar does.
+				//
+				// So, if no arch folders exist, we should ignore and move on,
+				// so ./gradlew run can continue smoothly.
+				//
+				// This technically can cause an issue if someone tries to run a JAR on an unsupported architecture,
+				// but they will just get a slightly worse error (and will still see this message).
+				System.err.println("Can't find native libraries for architecture " + arch);
+				return;
+			}
+			
+			try {
+				tempDir = Files.createTempDirectory("circuitsim-libs");
+			} catch (IOException exc) {
+				tempDir = null;
+				throw new RuntimeException("Couldn't create temporary directory for native libraries", exc);
 			}
 
 			URI archDir;

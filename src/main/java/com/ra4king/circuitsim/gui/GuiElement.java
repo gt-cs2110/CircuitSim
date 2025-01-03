@@ -72,12 +72,12 @@ public abstract class GuiElement {
 	}
 	
 	public boolean containsScreenCoord(int x, int y) {
-		return x >= getScreenX() && x < getScreenX() + getScreenWidth() && y >= getScreenY() &&
-		       y < getScreenY() + getScreenHeight();
+		return x >= getScreenX() && x <= getScreenX() + getScreenWidth() && y >= getScreenY() &&
+		       y <= getScreenY() + getScreenHeight();
 	}
 	
 	public boolean contains(int x, int y) {
-		return x >= getX() && x < getX() + getWidth() && y >= getY() && y < getY() + getHeight();
+		return x >= getX() && x <= getX() + getWidth() && y >= getY() && y <= getY() + getHeight();
 	}
 	
 	public boolean contains(GuiElement element) {

@@ -19,7 +19,6 @@ import com.ra4king.circuitsim.gui.Connection.WireConnection;
 import com.ra4king.circuitsim.gui.EditHistory.EditAction;
 import com.ra4king.circuitsim.gui.LinkWires.Wire;
 import com.ra4king.circuitsim.gui.PathFinding.LocationPreference;
-import com.ra4king.circuitsim.gui.PathFinding.Point;
 import com.ra4king.circuitsim.simulator.Circuit;
 import com.ra4king.circuitsim.simulator.CircuitState;
 import com.ra4king.circuitsim.simulator.SimulationException;
@@ -41,12 +40,21 @@ public class CircuitBoard {
 	private final Set<LinkWires> links;
 	private Set<LinkWires> badLinks;
 	
+	/**
+	 * Elements currently being dragged.
+	 */
 	private Set<GuiElement> moveElements;
+	/**
+	 * All ports of the dragged elements and wires connecting to the dragged elements.
+	 */
 	private final Set<Connection> connectedPorts = new HashSet<>();
 	
 	private Thread computeThread;
 	private MoveComputeResult moveResult;
 	private boolean addMoveAction;
+	/**
+	 * The number of units that the dragged elements are currently moved by.
+	 */
 	private int moveDeltaX, moveDeltaY;
 	
 	private final Map<Pair<Integer, Integer>, Set<Connection>> connectionsMap;
@@ -56,10 +64,12 @@ public class CircuitBoard {
 	private static class MoveComputeResult {
 		final Set<Wire> wiresToAdd;
 		final Set<Wire> wiresToRemove;
+		final Set<Connection> failedConnections;
 		
-		MoveComputeResult(Set<Wire> wiresToAdd, Set<Wire> wiresToRemove) {
+		MoveComputeResult(Set<Wire> wiresToAdd, Set<Wire> wiresToRemove, Set<Connection> failedConnections) {
 			this.wiresToAdd = wiresToAdd;
 			this.wiresToRemove = wiresToRemove;
+			this.failedConnections = failedConnections;
 		}
 	}
 	
@@ -272,8 +282,7 @@ public class CircuitBoard {
 				for (Connection connection : element.getConnections()) {
 					if ((connection instanceof PortConnection ||
 					     connection == ((Wire)connection.getParent()).getEndConnection() ||
-					     connection == ((Wire)connection.getParent()).getStartConnection()) &&
-					    getConnections(connection.getX(), connection.getY()).size() > 1) {
+					     connection == ((Wire)connection.getParent()).getStartConnection())) {
 						connectedPorts.add(connection);
 					}
 				}
@@ -284,7 +293,20 @@ public class CircuitBoard {
 		}
 	}
 	
+	/**
+	 * Moves currently dragged elements a given distance.
+	 * This is 
+	 * @param dx The number of x units to move
+	 * @param dy The number of y units to move
+	 * @param extendWires Whether the moved elements should be connected 
+	 *     to non-dragged components.
+	 * 
+	 * @implNote The elements currently dragged are defined by the `moveElements` Set.
+	 *     The initialization step (initMove) updates the elements of this set, and
+	 *     the finalization step (finalizeMove) clears this set and completes the move.
+	 */
 	public void moveElements(int dx, int dy, boolean extendWires) {
+		// Update the GUI to make sure the dragged elements are spatially in the correct position.
 		if (moveDeltaX == dx && moveDeltaY == dy) {
 			return;
 		}
@@ -311,6 +333,7 @@ public class CircuitBoard {
 				return;
 			}
 			
+			// Sort ports by order of distance to original location (ascending).
 			List<Connection> connectedPorts = new ArrayList<>(this.connectedPorts);
 			connectedPorts.sort((p1, p2) -> {
 				if (p1.getX() == p2.getX()) {
@@ -319,10 +342,12 @@ public class CircuitBoard {
 				
 				return dx > 0 ? p1.getX() - p2.getX() : p2.getX() - p1.getX();
 			});
-			
+
 			computeThread = new Thread(() -> {
 				Set<Wire> paths = new HashSet<>();
-				
+				Set<Wire> consumedWires = new HashSet<>();
+				Set<Connection> failedConnections = new HashSet<>();
+
 				Set<Pair<Integer, Integer>> portsSeen = new HashSet<>();
 				
 				for (Connection connectedPort : connectedPorts) {
@@ -332,17 +357,22 @@ public class CircuitBoard {
 					
 					int x = connectedPort.getX();
 					int y = connectedPort.getY();
-					int sx = x - dx;
-					int sy = y - dy;
+					int sourceX = x - dx;
+					int sourceY = y - dy;
 					
 					if (!portsSeen.add(new Pair<>(x, y))) {
 						continue;
 					}
 					
+					// The wires connected at the source connection position (if present).
+					//
+					// If during this process, we find that this port has no external connections,
+					// then this implies that this connection doesn't connect to a non-dragged item
+					// so we will skip pathfinding if that's the case.
 					final LinkWires linkWires;
-					
+
 					synchronized (CircuitBoard.this) {
-						Set<Connection> otherConnections = getConnections(sx, sy);
+						Set<Connection> otherConnections = getConnections(sourceX, sourceY);
 						if (otherConnections.isEmpty()) {
 							continue;
 						}
@@ -368,8 +398,79 @@ public class CircuitBoard {
 						}
 						
 						linkWires = lw;
+
+						// Set sourceX and sourceY to the earliest connection point along the wire.
+						// This is either the closest fork from where the port was originally 
+						// or the port at the end of the link (if there is no fork).
+						//
+						// We first check if we even need to move sourceX/sourceY.
+						// If we don't have a wire connecting to this port or there's a second port already here,
+						// then we've found the source and we can move on.
+						if (linkWires != null && !getConnections(sourceX, sourceY).stream().anyMatch(c -> c instanceof PortConnection)) {
+							// The search for this is unfortunately O(n^2) (n = # of wires in link wires),
+							// but it seems like that's also true of other wire algorithms for LinkWire.
+							// Unfortunate.
+							//
+							// endConnection = where the source for pathfinding will be
+							// currentX, currentY = current location we're traversing
+							// nextConnection = the connection on the other side of the wire we're traversing
+							int currentX = sourceX;
+							int currentY = sourceY;
+							Connection endConnection = null;
+							Set<Wire> wires = new HashSet<>(linkWires.getWires());
+							while (!wires.isEmpty()) {
+								// Find the next connection to traverse.
+								final int cx = currentX, cy = currentY;
+								List<Connection> possibleNext = wires.stream()
+									.<Connection>mapMulti((w, consumer) -> {
+										Connection wStart = w.getStartConnection();
+										Connection wEnd = w.getEndConnection();
+										if (wStart.isAt(cx, cy)) {
+											consumer.accept(wEnd);
+										} else if (wEnd.isAt(cx, cy)) {
+											consumer.accept(wStart);
+										}
+									})
+									.limit(2)
+									.toList();
+								if (possibleNext.size() != 1) {
+									// Either no "next" connection was found,
+									// or multiple possible branches were found.
+
+									// In either case, we can't really explore, so end here.
+									break;
+								}
+								Connection nextConnection = possibleNext.get(0);
+								wires.remove(nextConnection.getParent());
+								
+								Set<Connection> connections = getConnections(nextConnection.getX(), nextConnection.getY());
+								// If connections < 2, then this is a dead end. Cancel this operation (it causes gnarly behaviors if we pathfind from the dead end).
+								// If connections > 2, this is a fork, so we have found the end, so we can stop here.
+								// If connections == 2 and the other connection is a port, then we've hit the end, so we also stop here.
+								if (connections.size() < 2) {
+									wires.addAll(linkWires.getWires());
+									endConnection = null;
+									break;
+								} else if (connections.size() > 2 || connections.stream().anyMatch(c -> c instanceof PortConnection)) {
+									endConnection = nextConnection;
+									break;
+								} else {
+									currentX = nextConnection.getX();
+									currentY = nextConnection.getY();
+								}
+							}
+							if (endConnection != null) {
+								sourceX = endConnection.getX();
+								sourceY = endConnection.getY();
+							}
+
+							Set<Wire> traversedWires = new HashSet<>(linkWires.getWires());
+							traversedWires.removeAll(wires);
+							consumedWires.addAll(traversedWires);
+						}
 					}
-					
+
+					// All components currently on the board or being dragged.
 					Set<ComponentPeer<?>> components = new HashSet<>(getComponents());
 					components.addAll(moveElements
 						                  .stream()
@@ -377,7 +478,9 @@ public class CircuitBoard {
 						                  .map(e -> (ComponentPeer<?>)e)
 						                  .collect(Collectors.toSet()));
 					
-					Pair<Set<Wire>, Set<Point>> pair = PathFinding.bestPath(sx, sy, x, y, (px, py, horizontal) -> {
+					final int sx = sourceX;
+					final int sy = sourceY;
+					Set<Wire> path = PathFinding.bestPath(sx, sy, x, y, (px, py, horizontal) -> {
 						if (px == x && py == y) {
 							return LocationPreference.VALID;
 						}
@@ -386,33 +489,58 @@ public class CircuitBoard {
 							return LocationPreference.VALID;
 						}
 						
+						// All connections to (px, py) (including preexisting paths and a path found for a different port)
 						Set<Connection> connections = Stream
 							.concat(connectedPorts.stream(), paths.stream().flatMap(w -> w.getConnections().stream()))
-							.filter(c -> c.getX() == px && c.getY() == py)
+							.filter(c -> c.isAt(px, py))
 							.collect(Collectors.toSet());
 						synchronized (CircuitBoard.this) {
 							connections.addAll(getConnections(px, py));
 						}
 						
 						for (Connection connection : connections) {
+							// Reject any ports connected to other components
+							// (we don't want to connect a wire to another component)
 							if (connection instanceof PortConnection) {
 								return LocationPreference.INVALID;
 							}
 							
-							if (connection.getLinkWires() == null || linkWires == null ||
-							    connection.getLinkWires() == linkWires) {
-								return LocationPreference.PREFER;
-							}
-							
+							// Reject any points that would overlap with another wire
+							// (same orientation and same point)
+							// or would cause the wire to connect to another wire
+							// (point on the edge of wire)
 							if (connection instanceof WireConnection) {
 								Wire wire = (Wire)connection.getParent();
-								if (wire.isHorizontal() == horizontal || connection == wire.getStartConnection() ||
-								    connection == wire.getEndConnection()) {
-									return LocationPreference.INVALID;
+								if (!consumedWires.contains(wire)) {
+									// Path overlaps with present wire.
+									if (wire.isHorizontal() == horizontal && wire.contains(px, py)) {
+										// This line ^^ contains a bug and can fail sometimes
+										// (especially for ports that are on the middle of wires).
+										// The calculation below could help (alongside a !canOverlap above) 
+										// (it basically says "if you're on a middle of a wire, you can pass through it"),
+										// but that makes the pathfinding of two ports (e.g. those of an AND gate) 
+										// on the middle of a single wire worse.
+										// Adding extra cost to wires that overlap only partially works because
+										// ports moving along a wire would still have suboptimal pathfinding
+										// after enough movement. I don't really know what to here.
+
+										// boolean canOverlap = linkWires == null 
+										// 	&& wire.contains(sx, sy)
+										// 	&& !paths.contains(wire);
+										return LocationPreference.INVALID;
+									}
+									// Path would wrongly connect with present wire
+									if (wire.getStartConnection().isAt(px, py)) {
+										return LocationPreference.INVALID;
+									}
+									if (wire.getEndConnection().isAt(px, py)) {
+										return LocationPreference.INVALID;
+									}
 								}
 							}
 						}
 						
+						// Reject any wires which would overlap with a component.
 						for (ComponentPeer<?> component : components) {
 							if (component.contains(px, py)) {
 								return LocationPreference.INVALID;
@@ -421,68 +549,26 @@ public class CircuitBoard {
 						
 						return LocationPreference.VALID;
 					});
-					if (pair != null) {
-						paths.addAll(pair.getKey());
+					if (path != null && !path.isEmpty()) {
+						paths.addAll(path);
+					} else {
+						failedConnections.add(connectedPort);
 					}
 				}
 				
+				// Return wires:
 				synchronized (CircuitBoard.this) {
-					Set<Wire> toRemove = new HashSet<>();
-					Set<Wire> toAdd = new HashSet<>();
+					Set<Wire> toRemove = consumedWires;
+					Set<Wire> toAdd = new HashSet<>(paths);
 					
-					for (Wire newWire : paths) {
-						if (wireAlreadyExists(newWire) != null) {
-							toRemove.add(newWire);
-						} else {
-							boolean wasRemoved = false;
-							
-							for (LinkWires wires : links) {
-								for (Wire existing : wires.getWires()) {
-									if (existing.getLinkWires() == newWire.getLinkWires() &&
-									    existing.isHorizontal() == newWire.isHorizontal()) {
-										if (existing.equals(newWire)) {
-											wasRemoved = true;
-											toRemove.add(existing);
-											break;
-										} else if (existing.isWithin(newWire)) {
-											wasRemoved = true;
-											toAdd.addAll(spliceWire(newWire, existing));
-											toRemove.add(existing);
-											break;
-										} else if (newWire.isWithin(existing)) {
-											wasRemoved = true;
-											toAdd.addAll(spliceWire(existing, newWire));
-											toRemove.add(newWire);
-											break;
-										} else if (existing.overlaps(newWire)) {
-											Pair<Wire, Pair<Wire, Wire>>
-												pairs =
-												spliceOverlappingWire(newWire, existing);
-											
-											toAdd.add(pairs.getKey());
-											toRemove.add(pairs.getValue().getKey());
-											
-											wasRemoved = true;
-											break;
-										}
-									}
-								}
-							}
-							
-							if (!wasRemoved) {
-								toAdd.add(newWire);
-							}
-						}
-					}
-					
-					moveResult = new MoveComputeResult(toAdd, toRemove);
+					moveResult = new MoveComputeResult(toAdd, toRemove, failedConnections);
 					if (computeThread == Thread.currentThread()) {
 						computeThread = null;
 					}
 					
 					lastException = null;
 					
-					circuitManager.setNeedsRepaint();
+					circuitManager.getSimulatorWindow().setNeedsRepaint();
 				}
 				
 				latch.countDown();
@@ -1216,12 +1302,18 @@ public class CircuitBoard {
 					}
 				}
 				
+				// Paint removed and added wires and paint connections without paths
 				MoveComputeResult result = this.moveResult;
 				if (result != null) {
-					graphics.setFill(Color.RED);
+					graphics.setStroke(Color.RED);
 					result.wiresToRemove.forEach(wire -> wire.paint(graphics));
 					
-					graphics.setFill(Color.BLACK);
+					graphics.setFill(Color.RED);
+					result.failedConnections.forEach(c -> {
+						graphics.fillOval(c.getScreenX(), c.getScreenY(), c.getScreenWidth(), c.getScreenHeight());
+					});
+
+					graphics.setStroke(Color.BLACK);
 					result.wiresToAdd.forEach(wire -> wire.paint(graphics));
 				}
 			} finally {

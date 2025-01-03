@@ -1,39 +1,36 @@
 package com.ra4king.circuitsim.gui;
 
+import java.awt.Taskbar;
+import java.awt.Taskbar.Feature;
+import java.awt.Toolkit;
 import java.awt.image.RenderedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.net.URL;
-import java.net.URLClassLoader;
+import java.math.RoundingMode;
 import java.nio.file.Files;
-import java.nio.file.Path;
+import java.text.DecimalFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -69,7 +66,11 @@ import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.collections.ObservableList;
 import javafx.embed.swing.SwingFXUtils;
+import javafx.event.Event;
+import javafx.event.EventHandler;
+import javafx.geometry.Bounds;
 import javafx.geometry.Orientation;
+import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
 import javafx.geometry.Side;
 import javafx.scene.Cursor;
@@ -98,7 +99,10 @@ import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TabPane.TabClosingPolicy;
+import javafx.scene.control.TabPane.TabDragPolicy;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.control.TextFormatter;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
@@ -115,6 +119,7 @@ import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
+import javafx.scene.input.ZoomEvent;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.GridPane;
@@ -133,6 +138,7 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import javafx.util.Pair;
+import javafx.util.StringConverter;
 
 /**
  * @author Roi Atalla
@@ -175,7 +181,7 @@ public class CircuitSim extends Application {
 	private Runnable refreshComponentsTabs;
 	
 	private ComboBox<Integer> bitSizeSelect;
-	private ComboBox<Double> scaleFactorSelect;
+	private TextField scaleFactorInput;
 	private Label fpsLabel;
 	private Label clockLabel;
 	private Label messageLabel;
@@ -184,6 +190,8 @@ public class CircuitSim extends Application {
 	private Label componentLabel;
 	
 	private Tab circuitButtonsTab;
+	private Canvas circuitCanvas;
+	private ScrollPane canvasScrollPane;
 	private TabPane canvasTabPane;
 	private Map<String, Pair<ComponentLauncherInfo, CircuitManager>> circuitManagers;
 	
@@ -288,7 +296,6 @@ public class CircuitSim extends Application {
 		editHistory = new EditHistory(this);
 		editHistory.addListener((action, manager, params) -> {
 			updateTitle();
-			circuitManagers.values().stream().map(Pair::getValue).forEach(this::updateCanvasSize);
 		});
 		
 		componentManager = new ComponentManager();
@@ -355,42 +362,25 @@ public class CircuitSim extends Application {
 	}
 	
 	public double getScaleFactor() {
-		return scaleFactorSelect.getSelectionModel().getSelectedItem();
+		@SuppressWarnings("unchecked")
+		TextFormatter<Double> formatter = (TextFormatter<Double>) scaleFactorInput.getTextFormatter();
+		return formatter.getValue();
 	}
 	
+	public void setScaleFactor(double scale) {
+		@SuppressWarnings("unchecked")
+		TextFormatter<Double> formatter = (TextFormatter<Double>) scaleFactorInput.getTextFormatter();
+		formatter.setValue(Math.clamp(scale, 0.25, 8));
+	}
+
 	public double getScaleFactorInverted() {
 		return 1.0 / getScaleFactor();
 	}
 	
-	void zoomIn(double x, double y) {
-		int selectedIndex = scaleFactorSelect.getSelectionModel().getSelectedIndex();
-		if (selectedIndex < scaleFactorSelect.getItems().size()) {
-			scaleFactorSelect.getSelectionModel().select(selectedIndex + 1);
-			
-			setScrollPosition(x, y);
-		}
+	void setNeedsRepaint() {
+		needsRepaint = true;
 	}
-	
-	void zoomOut(double x, double y) {
-		int selectedIndex = scaleFactorSelect.getSelectionModel().getSelectedIndex();
-		if (selectedIndex > 0) {
-			scaleFactorSelect.getSelectionModel().select(selectedIndex - 1);
-			
-			setScrollPosition(x, y);
-		}
-	}
-	
-	private void setScrollPosition(double x, double y) {
-		CircuitManager manager = getCurrentCircuit();
-		if (manager != null) {
-			ScrollPane scrollPane = manager.getCanvasScrollPane();
-			Canvas canvas = manager.getCanvas();
-			
-			scrollPane.setHvalue(scrollPane.getHmax() * x / canvas.getWidth());
-			scrollPane.setVvalue(scrollPane.getVmax() * y / canvas.getHeight());
-		}
-	}
-	
+
 	/**
 	 * Get all circuits.
 	 *
@@ -469,21 +459,24 @@ public class CircuitSim extends Application {
 		throw new IllegalStateException("This can't happen lol");
 	}
 	
-	private void repaintAllCircuits() {
-		simulator.runSync(() -> circuitManagers.values().stream().map(Pair::getValue).forEach(CircuitManager::paint));
-	}
-	
 	private CircuitManager getCurrentCircuit() {
+		if (canvasTabPane == null) {
+			return null;
+		}
 		Tab tab = canvasTabPane.getSelectionModel().getSelectedItem();
-		
+		if (tab == null) {
+			return null;
+		}
 		// sigh yes this sometimes happens
 		if (!canvasTabPane.getTabs().contains(tab)) {
 			return null;
 		}
 		
-		return tab == null || circuitManagers.get(tab.getText()) == null ?
-		       null :
-		       circuitManagers.get(tab.getText()).getValue();
+		Pair<ComponentLauncherInfo, CircuitManager> pair = circuitManagers.get(tab.getText());
+		if (pair == null) {
+			return null;
+		}
+		return pair.getValue();
 	}
 	
 	public String getCircuitName(CircuitManager manager) {
@@ -631,6 +624,7 @@ public class CircuitSim extends Application {
 			
 			Pair<ComponentLauncherInfo, CircuitManager> removed = circuitManagers.remove(tab.getText());
 			circuitModified(removed.getValue().getCircuit(), null, false);
+			removed.getValue().destroy();
 			
 			editHistory.addAction(EditAction.DELETE_CIRCUIT, manager, tab, idx);
 			
@@ -923,36 +917,15 @@ public class CircuitSim extends Application {
 		});
 	}
 	
-	void updateCanvasSize(CircuitManager circuitManager) {
+	/**
+	 * Resizes the canvas to the size of its parent scroll pane.
+	 */
+	void updateCanvasSize() {
 		runFxSync(() -> {
-			OptionalInt maxX = Stream
-				.concat(circuitManager.getSelectedElements().stream(),
-				        Stream.concat(circuitManager.getCircuitBoard().getComponents().stream(),
-				                      circuitManager
-					                      .getCircuitBoard()
-					                      .getLinks()
-					                      .stream()
-					                      .flatMap(links -> links.getWires().stream())))
-				.mapToInt(componentPeer -> componentPeer.getX() + componentPeer.getWidth())
-				.max();
-			
-			double maxWidth = Math.min(5000, getScaleFactor() * (maxX.orElse(0) + 5) * GuiUtils.BLOCK_SIZE);
-			circuitManager.getCanvas().setWidth(Math.max(maxWidth, circuitManager.getCanvasScrollPane().getWidth()));
-			
-			OptionalInt maxY = Stream
-				.concat(circuitManager.getSelectedElements().stream(),
-				        Stream.concat(circuitManager.getCircuitBoard().getComponents().stream(),
-				                      circuitManager
-					                      .getCircuitBoard()
-					                      .getLinks()
-					                      .stream()
-					                      .flatMap(links -> links.getWires().stream())))
-				.mapToInt(componentPeer -> componentPeer.getY() + componentPeer.getHeight())
-				.max();
-			
-			double maxHeight = Math.min(5000, getScaleFactor() * (maxY.orElse(0) + 5) * GuiUtils.BLOCK_SIZE);
-			circuitManager.getCanvas().setHeight(Math.max(maxHeight,
-			                                              circuitManager.getCanvasScrollPane().getHeight()));
+			double paneWidth = canvasScrollPane.getWidth();
+			double paneHeight = canvasScrollPane.getHeight();
+			circuitCanvas.setWidth(paneWidth);
+			circuitCanvas.setHeight(paneHeight);
 			
 			needsRepaint = true;
 		});
@@ -1364,7 +1337,7 @@ public class CircuitSim extends Application {
 							}
 							break;
 						case "Scale":
-							scaleFactorSelect.setValue(Double.parseDouble(value));
+							setScaleFactor(Double.parseDouble(value));
 							break;
 						case "LastSavePath":
 							lastSaveFile = new File(value);
@@ -1405,7 +1378,7 @@ public class CircuitSim extends Application {
 			conf.add("WindowWidth=" + (int)stage.getWidth());
 			conf.add("WindowHeight=" + (int)stage.getHeight());
 		}
-		conf.add("Scale=" + scaleFactorSelect.getValue());
+		conf.add("Scale=" + getScaleFactor());
 		conf.add("HelpShown=" + VERSION);
 		if (lastSaveFile != null) {
 			conf.add("LastSavePath=" + lastSaveFile.getAbsolutePath());
@@ -1623,8 +1596,6 @@ public class CircuitSim extends Application {
 							}
 							
 							Platform.runLater(() -> {
-								circuitManagers.values().stream().map(Pair::getValue).forEach(this::updateCanvasSize);
-								
 								for (MenuItem freq : frequenciesMenu.getItems()) {
 									if (freq.getText().startsWith(String.valueOf(circuitFile.clockSpeed))) {
 										((RadioMenuItem)freq).setSelected(true);
@@ -1638,9 +1609,6 @@ public class CircuitSim extends Application {
 								
 								latch.countDown();
 							});
-							
-							// Do an initial paint of all the tabs
-							repaintAllCircuits();
 						});
 						tasksThread.setName("LoadCircuits Tasks Thread");
 						tasksThread.start();
@@ -1817,6 +1785,14 @@ public class CircuitSim extends Application {
 		}
 	}
 	
+	private <E extends Event> EventHandler<? super E> onCurrentCircuit(BiConsumer<CircuitManager, E> handler) {
+		return (e) -> {
+			CircuitManager manager = this.getCurrentCircuit();
+			if (manager != null) {
+				handler.accept(manager, e);
+			}
+		};
+	}
 	/**
 	 * Create a Circuit, adding a new tab at the end and a button in the Circuits components tab.
 	 *
@@ -1828,62 +1804,18 @@ public class CircuitSim extends Application {
 		}
 		
 		runFxSync(() -> {
-			String n = name;
-			
-			Canvas canvas = new Canvas(800, 600);
-			canvas.setFocusTraversable(true);
-			
-			ScrollPane canvasScrollPane = new ScrollPane(canvas);
-			canvasScrollPane.setFocusTraversable(true);
-			
-			CircuitManager circuitManager = new CircuitManager(n, this, canvasScrollPane, simulator, showGridProp);
+			CircuitManager circuitManager = new CircuitManager(name, this, simulator, showGridProp);
 			circuitManager.getCircuit().addListener(this::circuitModified);
 			
-			canvas.addEventHandler(MouseEvent.ANY, e -> canvas.requestFocus());
-			canvas.addEventHandler(MouseEvent.MOUSE_MOVED, circuitManager::mouseMoved);
-			canvas.addEventHandler(MouseEvent.MOUSE_DRAGGED, e -> {
-				circuitManager.mouseDragged(e);
-				updateCanvasSize(circuitManager);
-			});
-			canvas.addEventHandler(MouseEvent.MOUSE_PRESSED, (e) -> {
-				circuitManager.mousePressed(e);
-				e.consume();
-			});
-			canvas.addEventHandler(MouseEvent.MOUSE_RELEASED, circuitManager::mouseReleased);
-			canvas.addEventHandler(ScrollEvent.SCROLL, circuitManager::mouseWheelScrolled);
-			canvas.addEventHandler(MouseEvent.MOUSE_ENTERED, circuitManager::mouseEntered);
-			canvas.addEventHandler(MouseEvent.MOUSE_EXITED, circuitManager::mouseExited);
-			canvas.addEventHandler(KeyEvent.KEY_PRESSED, circuitManager::keyPressed);
-			canvas.addEventHandler(KeyEvent.KEY_TYPED, circuitManager::keyTyped);
-			canvas.addEventHandler(KeyEvent.KEY_RELEASED, circuitManager::keyReleased);
-			canvas.focusedProperty().addListener((observable, oldValue, newValue) -> {
-				if (newValue) {
-					circuitManager.focusGained();
-				} else {
-					circuitManager.focusLost();
-				}
-			});
-			
-			canvasScrollPane
-				.widthProperty()
-				.addListener((observable, oldValue, newValue) -> this.updateCanvasSize(circuitManager));
-			canvasScrollPane
-				.heightProperty()
-				.addListener((observable, oldValue, newValue) -> this.updateCanvasSize(circuitManager));
-			
-			String originalName = n;
-			for (int count = 0; getCircuitManager(originalName) != null; count++) {
-				originalName = n;
-				if (count > 0) {
-					originalName += count;
-				}
+			// If name already exists, add a number to the name until it doesn't exist.
+			String originalName = name;
+			String revisedName = name;
+			for (int count = 1; getCircuitManager(revisedName) != null; count++) {
+				revisedName = originalName + " " + count;
 			}
+			circuitManager.setName(revisedName);
 			
-			n = originalName;
-			
-			circuitManager.setName(n);
-			
-			Tab canvasTab = new Tab(n, canvasScrollPane);
+			Tab canvasTab = new Tab(revisedName);
 			MenuItem rename = new MenuItem("Rename");
 			rename.setOnAction(event -> {
 				String lastTyped = canvasTab.getText();
@@ -1955,7 +1887,7 @@ public class CircuitSim extends Application {
 				}
 			});
 			
-			circuitManagers.put(canvasTab.getText(), new Pair<>(createSubcircuitLauncherInfo(n), circuitManager));
+			circuitManagers.put(canvasTab.getText(), new Pair<>(createSubcircuitLauncherInfo(revisedName), circuitManager));
 			canvasTabPane.getTabs().add(canvasTab);
 			
 			refreshCircuitsTab();
@@ -1965,7 +1897,7 @@ public class CircuitSim extends Application {
 			                      canvasTab,
 			                      canvasTabPane.getTabs().size() - 1);
 			
-			canvas.requestFocus();
+			this.circuitCanvas.requestFocus();
 		});
 	}
 	
@@ -1984,8 +1916,20 @@ public class CircuitSim extends Application {
 		// Default to showing the grid background
 		this.showGridProp = new SimpleBooleanProperty(true);
 		
+		// Windows & Linux icon:
 		stage.getIcons().add(new Image(getClass().getResourceAsStream("/images/Icon.png")));
-		
+		// macOS dock icon:
+        if (Taskbar.isTaskbarSupported()) {
+            Taskbar taskbar = Taskbar.getTaskbar();
+
+            if (taskbar.isSupported(Feature.ICON_IMAGE)) {
+                Toolkit defaultToolkit = Toolkit.getDefaultToolkit();
+                java.awt.Image dockIcon = defaultToolkit.getImage(getClass().getResource("/images/IconMacOS.png"));
+                taskbar.setIconImage(dockIcon);
+            }
+
+        }
+
 		bitSizeSelect = new ComboBox<>();
 		for (int i = 1; i <= 32; i++) {
 			bitSizeSelect.getItems().add(i);
@@ -1996,19 +1940,32 @@ public class CircuitSim extends Application {
 			.selectedItemProperty()
 			.addListener((observable, oldValue, newValue) -> modifiedSelection(selectedComponent));
 		
-		scaleFactorSelect = new ComboBox<>();
-		for (int i = 3; i <= 10; i++) {
-			scaleFactorSelect.getItems().add(i / 10.0);
-		}
-		for (int i = 1; i <= 16; i++) {
-			scaleFactorSelect.getItems().add(1 + i * 0.25);
-		}
-		scaleFactorSelect.setValue(1.0);
-		scaleFactorSelect.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
+		scaleFactorInput = new TextField();
+		scaleFactorInput.setMaxWidth(80);
+		scaleFactorInput.setPrefWidth(80);
+		scaleFactorInput.setTextFormatter(new TextFormatter<>(
+			new StringConverter<>() {
+				@Override
+				public String toString(Double value) {
+					// Round to 2 decimal places.
+					if (value == null) return "";
+					DecimalFormat df = new DecimalFormat("0.0#");
+					df.setRoundingMode(RoundingMode.HALF_UP);
+					return value != null ? df.format(value) : "";
+				}
+
+				@Override
+				public Double fromString(String value) {
+					// Normal parsing.
+					return value != null && !value.isBlank() ? Math.clamp(Double.valueOf(value), 0.25, 8) : 1.0;
+				}
+
+			},
+			1.0, 
+			change -> change.getControlNewText().matches("\\d*(?:\\.\\d*)?") ? change : null
+		));
+		scaleFactorInput.getTextFormatter().valueProperty().addListener((observable, oldValue, newValue) -> {
 			needsRepaint = true;
-			for (Pair<ComponentLauncherInfo, CircuitManager> pair : circuitManagers.values()) {
-				updateCanvasSize(pair.getValue());
-			}
 		});
 		
 		buttonTabPane = new TabPane();
@@ -2019,25 +1976,79 @@ public class CircuitSim extends Application {
 		componentLabel = new Label();
 		componentLabel.setFont(GuiUtils.getFont(16));
 		
+		// Canvas and tab pane
+		circuitCanvas = new Canvas(800, 600);
+		circuitCanvas.setFocusTraversable(true);
+		
+		canvasScrollPane = new ScrollPane(circuitCanvas);
+		canvasScrollPane.setFocusTraversable(true);
+		
+		circuitCanvas.addEventHandler(MouseEvent.ANY, e -> circuitCanvas.requestFocus());
+		circuitCanvas.addEventHandler(MouseEvent.MOUSE_MOVED, onCurrentCircuit(CircuitManager::mouseMoved));
+		circuitCanvas.addEventHandler(MouseEvent.MOUSE_DRAGGED, e -> {
+			CircuitManager manager = getCurrentCircuit();
+			if (manager != null) {
+				manager.mouseDragged(e);
+			}
+		});
+		circuitCanvas.addEventHandler(MouseEvent.MOUSE_PRESSED, (e) -> {
+			CircuitManager manager = getCurrentCircuit();
+			if (manager != null) {
+				manager.mousePressed(e);
+			}
+			e.consume();
+		});
+		circuitCanvas.addEventHandler(MouseEvent.MOUSE_RELEASED, onCurrentCircuit(CircuitManager::mouseReleased));
+		circuitCanvas.addEventHandler(ScrollEvent.SCROLL_STARTED, onCurrentCircuit(CircuitManager::scrollStarted));
+		circuitCanvas.addEventHandler(ScrollEvent.SCROLL, onCurrentCircuit(CircuitManager::scroll));
+		circuitCanvas.addEventHandler(ScrollEvent.SCROLL_FINISHED, onCurrentCircuit(CircuitManager::scrollFinished));
+		circuitCanvas.addEventHandler(MouseEvent.MOUSE_ENTERED, onCurrentCircuit(CircuitManager::mouseEntered));
+		circuitCanvas.addEventHandler(MouseEvent.MOUSE_EXITED, onCurrentCircuit(CircuitManager::mouseExited));
+		circuitCanvas.addEventHandler(KeyEvent.KEY_PRESSED, onCurrentCircuit(CircuitManager::keyPressed));
+		circuitCanvas.addEventHandler(KeyEvent.KEY_TYPED, onCurrentCircuit(CircuitManager::keyTyped));
+		circuitCanvas.addEventHandler(KeyEvent.KEY_RELEASED, onCurrentCircuit(CircuitManager::keyReleased));
+		circuitCanvas.addEventHandler(ZoomEvent.ZOOM, onCurrentCircuit(CircuitManager::zoom));
+		circuitCanvas.focusedProperty().addListener((observable, oldValue, newValue) -> {
+			CircuitManager manager = getCurrentCircuit();
+			if (manager != null) {
+				if (newValue) {
+					manager.focusGained();
+				} else {
+					manager.focusLost();
+				}
+			}
+		});
+		circuitCanvas.setOnContextMenuRequested(onCurrentCircuit(CircuitManager::contextMenuRequested));
+
+		canvasScrollPane
+			.widthProperty()
+			.addListener((observable, oldValue, newValue) -> updateCanvasSize());
+		canvasScrollPane
+			.heightProperty()
+			.addListener((observable, oldValue, newValue) -> updateCanvasSize());
+
 		canvasTabPane = new TabPane();
 		canvasTabPane.setPrefWidth(800);
 		canvasTabPane.setPrefHeight(600);
+		canvasTabPane.setTabDragPolicy(TabDragPolicy.REORDER);
 		canvasTabPane.setTabClosingPolicy(TabClosingPolicy.ALL_TABS);
 		canvasTabPane.widthProperty().addListener((observable, oldValue, newValue) -> needsRepaint = true);
 		canvasTabPane.heightProperty().addListener((observable, oldValue, newValue) -> needsRepaint = true);
-		canvasTabPane.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
-			CircuitManager oldManager = oldValue == null || !circuitManagers.containsKey(oldValue.getText()) ?
+		canvasTabPane.getSelectionModel().selectedItemProperty().addListener((observable, oldTab, newTab) -> {
+			CircuitManager oldManager = oldTab == null || !circuitManagers.containsKey(oldTab.getText()) ?
 			                            null :
-			                            circuitManagers.get(oldValue.getText()).getValue();
-			CircuitManager newManager = newValue == null || !circuitManagers.containsKey(newValue.getText()) ?
+			                            circuitManagers.get(oldTab.getText()).getValue();
+			CircuitManager newManager = newTab == null || !circuitManagers.containsKey(newTab.getText()) ?
 			                            null :
-			                            circuitManagers.get(newValue.getText()).getValue();
+			                            circuitManagers.get(newTab.getText()).getValue();
 			if (oldManager != null && newManager != null) {
 				newManager.setLastMousePosition(oldManager.getLastMousePosition());
 				modifiedSelection(selectedComponent);
-				
-				needsRepaint = true;
 			}
+			
+			if (oldTab != null) oldTab.setContent(null);
+			if (newTab != null) newTab.setContent(canvasScrollPane);
+			needsRepaint = true;
 		});
 		
 		buttonsToggleGroup = new ToggleGroup();
@@ -2134,15 +2145,13 @@ public class CircuitSim extends Application {
 		
 		MenuItem print = new MenuItem("Export as images");
 		print.setOnAction(event -> {
-			// Repaint first, so it can flush while the user chooses an output directory.
-			repaintAllCircuits();
-			
 			DirectoryChooser directoryChooser = new DirectoryChooser();
 			directoryChooser.setTitle("Choose output directory");
-			directoryChooser.setInitialDirectory(
-				lastSaveFile == null ? new File(System.getProperty("user.dir")) : lastSaveFile.getParentFile());
 			File outputDirectory = directoryChooser.showDialog(stage);
-			
+			if (outputDirectory == null) {
+				return;
+			}
+
 			int count = circuitManagers.size();
 			double progressPerCircuit = 1.0 / count;
 			
@@ -2160,12 +2169,32 @@ public class CircuitSim extends Application {
 			new Thread(() -> {
 				try {
 					HashMap<String, RenderedImage> images = new HashMap<>();
-					runFxSync(() -> simulator.runSync(() -> circuitManagers.forEach((name, managerPair) -> {
-						Canvas canvas = managerPair.getValue().getCanvas();
-						Image image = canvas.snapshot(null, null);
-						RenderedImage rendered = SwingFXUtils.fromFXImage(image, null);
-						images.put(name, rendered);
-					})));
+					runFxSync(() -> simulator.runSync(() -> {
+						circuitManagers.forEach((name, pair) -> {
+							CircuitManager manager = pair.getValue();
+							
+							Bounds circuitBounds = pair.getValue().getCircuitBounds();
+							Point2D newOrigin = new Point2D(circuitBounds.getMinX(), circuitBounds.getMinY())
+								.multiply(-GuiUtils.BLOCK_SIZE);
+							manager.setTranslate(newOrigin);
+							setScaleFactor(1.0);
+							try {
+								circuitCanvas.setWidth(circuitBounds.getWidth() * getScaleFactor() * GuiUtils.BLOCK_SIZE);
+								circuitCanvas.setHeight(circuitBounds.getHeight() * getScaleFactor() * GuiUtils.BLOCK_SIZE);
+							} catch (Exception e) {
+								System.err.println(String.format("Could not export circuit %s", name));
+								return;
+							}
+
+							manager.paint(circuitCanvas);
+							Image image = circuitCanvas.snapshot(null, null);
+							RenderedImage rendered = SwingFXUtils.fromFXImage(image, null);
+							images.put(name, rendered);
+
+							manager.setTranslate(Point2D.ZERO);
+						});
+						updateCanvasSize();
+					}));
 					
 					AtomicInteger counter = new AtomicInteger(0);
 					canvasTabPane.getTabs().forEach(tab -> {
@@ -2287,8 +2316,7 @@ public class CircuitSim extends Application {
 		MenuItem copy = new MenuItem("Copy");
 		copy.setAccelerator(new KeyCodeCombination(KeyCode.C, KeyCombination.SHORTCUT_DOWN));
 		copy.setOnAction(event -> {
-			CircuitManager manager = getCurrentCircuit();
-			if (manager != null && manager.getCanvas().isFocused()) {
+			if (this.circuitCanvas.isFocused()) {
 				copySelectedComponents();
 			}
 		});
@@ -2296,8 +2324,7 @@ public class CircuitSim extends Application {
 		MenuItem cut = new MenuItem("Cut");
 		cut.setAccelerator(new KeyCodeCombination(KeyCode.X, KeyCombination.SHORTCUT_DOWN));
 		cut.setOnAction(event -> {
-			CircuitManager manager = getCurrentCircuit();
-			if (manager != null && manager.getCanvas().isFocused()) {
+			if (this.circuitCanvas.isFocused()) {
 				cutSelectedComponents();
 			}
 		});
@@ -2305,8 +2332,7 @@ public class CircuitSim extends Application {
 		MenuItem paste = new MenuItem("Paste");
 		paste.setAccelerator(new KeyCodeCombination(KeyCode.V, KeyCombination.SHORTCUT_DOWN));
 		paste.setOnAction(event -> {
-			CircuitManager manager = getCurrentCircuit();
-			if (manager != null && manager.getCanvas().isFocused()) {
+			if (this.circuitCanvas.isFocused()) {
 				pasteFromClipboard();
 			}
 		});
@@ -2315,7 +2341,7 @@ public class CircuitSim extends Application {
 		selectAll.setAccelerator(new KeyCodeCombination(KeyCode.A, KeyCombination.SHORTCUT_DOWN));
 		selectAll.setOnAction(event -> {
 			CircuitManager manager = getCurrentCircuit();
-			if (manager != null && manager.getCanvas().isFocused()) {
+			if (manager != null && this.circuitCanvas.isFocused()) {
 				manager.setSelectedElements(Stream
 					                            .concat(manager.getCircuitBoard().getComponents().stream(),
 					                                    manager
@@ -2591,7 +2617,7 @@ public class CircuitSim extends Application {
 		                          bitSizeSelect,
 		                          blank,
 		                          new Label("Scale:"),
-		                          scaleFactorSelect);
+		                          scaleFactorInput);
 		
 		VBox.setVgrow(canvasPropsSplit, Priority.ALWAYS);
 		scene = new Scene(new VBox(menuBar, toolBar, canvasPropsSplit));
@@ -2670,9 +2696,9 @@ public class CircuitSim extends Application {
 					
 					CircuitManager manager = getCurrentCircuit();
 					if (manager != null) {
-						if ((needsRepaint || manager.needsRepaint())) {
+						if (needsRepaint) {
 							needsRepaint = false;
-							simulator.runSync(manager::paint);
+							simulator.runSync(() -> manager.paint(circuitCanvas));
 						}
 						
 						if (!loadingFile) {

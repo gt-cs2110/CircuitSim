@@ -1,109 +1,120 @@
 package com.ra4king.circuitsim.gui;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
+import java.util.PriorityQueue;
 import java.util.Set;
 
 import com.ra4king.circuitsim.gui.LinkWires.Wire;
 
-import javafx.util.Pair;
-
 /**
  * @author Roi Atalla
  */
-public class PathFinding {
+public final class PathFinding {
+	private PathFinding() {}
+
+	/**
+	 * Value that is returned in a {@link PathFinding.ValidWireLocation} callback.
+	 */
 	public enum LocationPreference {
-		INVALID, VALID, PREFER
+		/**
+		 * Under no circumstances may this point be part of the wire path.
+		 */
+		INVALID,
+		/**
+		 * This point may be part of the wire path.
+		 */
+		VALID,
+		/**
+		 * This point should be part of the wire path.
+		 */
+		PREFER
 	}
 	
+	/**
+	 * Callback for generating whether a given point should be allowed to be part of a path.
+	 */
+	@FunctionalInterface
 	public interface ValidWireLocation {
 		LocationPreference isValidWireLocation(int x, int y, boolean horizontal);
 	}
 	
-	private static final Cost INFINITY = new Cost(Integer.MAX_VALUE, Integer.MAX_VALUE);
-	
-	public static Pair<Set<Wire>, Set<Point>> bestPath(int sx, int sy, int dx, int dy, ValidWireLocation valid) {
+	/**
+	 * Computes the best path between the source point and destination point.
+	 * @param sx source x
+	 * @param sy source y
+	 * @param dx destination x
+	 * @param dy destination y
+	 * @param callback a callback which indicates 
+	 *     whether a wire can be placed at a given point and orientation
+	 * @return the set of wires that form the best path between the two points
+	 */
+	public static Set<Wire> bestPath(int sx, int sy, int dx, int dy, ValidWireLocation callback) {
 		if (dx < 0 || dy < 0) {
-			return new Pair<>(Collections.emptySet(), Collections.emptySet());
+			return Set.of();
 		}
 		
-		Point source = new Point(sx, sy, null);
-		Point destination = new Point(dx, dy, null);
+		Point source = new Point(sx, sy);
+		Point destination = new Point(dx, dy);
 		
-		Set<Point> closedSet = new HashSet<>();
-		Map<Point, Point> cameFrom = new HashMap<>();
-		Map<Point, Cost> gScore = new HashMap<>();
-		Map<Point, Integer> fScore = new HashMap<>();
+		// Map of points to their corresponding parent point.
+		// 
+		// Also acts as the visited set.
+		// If a key exists in this map, it is considered "visited".
+		Map<Point, Point> parents = new HashMap<>();
+		PriorityQueue<Node> frontier = new PriorityQueue<>();
 		
-		Set<Point> openSet = new HashSet<>();
-		openSet.add(source);
-		
-		gScore.put(source, new Cost(0, 0));
-		fScore.put(source, destination.estimateCost(source));
-		
+		frontier.add(new Node(new Cost(0, 0, 0), source, null, null));
 		int iterations = 0;
-		
-		while (!openSet.isEmpty()) {
+		while (!frontier.isEmpty()) {
 			if (Thread.currentThread().isInterrupted()) {
-				return new Pair<>(Collections.emptySet(), closedSet);
+				return Set.of();
 			}
 			
 			iterations++;
 			if (iterations == 5000) {
 				System.err.println("Path finding taking too long, bail...");
-				return new Pair<>(Collections.emptySet(), closedSet);
+				return Set.of();
 			}
-			
-			Point current = null;
-			for (Point point : openSet) {
-				if (current == null ||
-				    fScore.getOrDefault(point, Integer.MAX_VALUE) < fScore.getOrDefault(current, Integer.MAX_VALUE)) {
-					current = point;
-				}
+
+			Node current = frontier.poll();
+			// Skip if already visited
+			if (parents.containsKey(current.point)) {
+				continue;
 			}
-			
-			if (current == null) {
-				throw new IllegalStateException("Impossible");
+			parents.put(current.point, current.parent);
+
+			if (destination.equals(current.point)) {
+				return constructPath(parents, current.point);
 			}
-			
-			openSet.remove(current);
-			
-			if (current.equalsIgnoreDirection(destination)) {
-				return new Pair<>(constructPath(cameFrom, current), closedSet);
-			}
-			
-			closedSet.add(current);
-			
-			for (Direction direction : Direction.values) {
-				if (direction.isOpposite(current.direction)) {
+
+			// Add neighbors
+			for (Direction direction : Direction.values()) {
+				// Filter opposite direction (cause wires can't move backwards)
+				// and out-of-bounds neighbors.
+				if (direction.getOpposite() == current.directionEntered) {
 					continue;
 				}
-				
-				Point neighbor = direction.move(current);
+				Point neighbor = direction.move(current.point);
 				if (neighbor.x < 0 || neighbor.y < 0) {
 					continue;
 				}
-				
-				if (closedSet.contains(neighbor)) {
-					continue;
-				}
-				
-				LocationPreference
-					preference =
-					valid.isValidWireLocation(neighbor.x,
-					                          neighbor.y,
-					                          direction == Direction.RIGHT || direction == Direction.LEFT);
-				
+
+				LocationPreference preference = callback.isValidWireLocation(neighbor.x, neighbor.y, direction.isHorizontal());
 				if (preference == LocationPreference.INVALID) {
 					continue;
 				}
-				
-				int additionalLength = preference == LocationPreference.PREFER ? 0 : 1;
+
+				int additionalLength = switch (preference) {
+					case PREFER -> 0;
+					case VALID -> 1;
+					case INVALID -> 999;
+				};
 				
 				int additionalTurns = 0;
-				if (current.direction != null && direction != current.direction) {
+				if (current.directionEntered != null && direction != current.directionEntered) {
 					if (neighbor.x == destination.x || neighbor.y == destination.y) {
 						additionalTurns = 1;
 					} else {
@@ -111,34 +122,25 @@ public class PathFinding {
 					}
 				}
 				
-				Cost currentCost = gScore.get(current);
-				Cost totalCost = new Cost(currentCost.length + additionalLength, currentCost.turns + additionalTurns);
-				
-				if (totalCost.compareTo(gScore.getOrDefault(neighbor, INFINITY)) >= 0) {
-					continue;
-				}
-				
-				cameFrom.put(neighbor, current);
-				gScore.put(neighbor, totalCost);
-				
-				int estimateCost = destination.estimateCost(neighbor) + totalCost.length + 50 * totalCost.turns;
-				fScore.put(neighbor, estimateCost);
-				
-				openSet.add(neighbor);
+				Cost totalCost = new Cost(
+					current.cost.length + additionalLength,
+					current.cost.turns + additionalTurns,
+					neighbor.manhattanDistance(destination)
+				);
+				frontier.add(new Node(totalCost, neighbor, current.point, direction));
 			}
 		}
-		
+
 		System.err.println("No possible paths found...");
 		return null;
 	}
-	
+
 	private static Set<Wire> constructPath(Map<Point, Point> cameFrom, Point current) {
 		Set<Wire> totalPath = new HashSet<>();
 		
 		Point lastEndpoint = current;
-		while (cameFrom.containsKey(current)) {
-			Point next = cameFrom.get(current);
-			
+		Point next = cameFrom.get(current);
+		while (next != null) {
 			if (!(lastEndpoint.x == current.x && current.x == next.x) &&
 			    !(lastEndpoint.y == current.y && current.y == next.y)) {
 				int len = (current.x - lastEndpoint.x) + (current.y - lastEndpoint.y);
@@ -147,6 +149,7 @@ public class PathFinding {
 			}
 			
 			current = next;
+			next = cameFrom.get(current);
 		}
 		
 		int len = (current.x - lastEndpoint.x) + (current.y - lastEndpoint.y);
@@ -158,118 +161,99 @@ public class PathFinding {
 	}
 	
 	private enum Direction {
-		RIGHT {
-			public Point move(Point point) {
-				return new Point(point.x + 1, point.y, RIGHT);
-			}
-			
-			public boolean isOpposite(Direction other) {
-				return other == LEFT;
-			}
-		}, LEFT {
-			public Point move(Point point) {
-				return new Point(point.x - 1, point.y, LEFT);
-			}
-			
-			public boolean isOpposite(Direction other) {
-				return other == RIGHT;
-			}
-		}, DOWN {
-			public Point move(Point point) {
-				return new Point(point.x, point.y + 1, DOWN);
-			}
-			
-			public boolean isOpposite(Direction other) {
-				return other == UP;
-			}
-		}, UP {
-			public Point move(Point point) {
-				return new Point(point.x, point.y - 1, UP);
-			}
-			
-			public boolean isOpposite(Direction other) {
-				return other == DOWN;
-			}
-		};
+		RIGHT(1, 0), LEFT(-1, 0), DOWN(0, 1), UP(0, -1);
 		
-		public static final Direction[] values = values();
-		
-		public abstract Point move(Point point);
-		
-		public abstract boolean isOpposite(Direction other);
+		private int deltaX;
+		private int deltaY;
+		private Direction(int deltaX, int deltaY) {
+			this.deltaX = deltaX;
+			this.deltaY = deltaY;
+		}
+
+		public Direction getOpposite() {
+			return switch (this) {
+				case RIGHT -> LEFT;
+				case LEFT -> RIGHT;
+				case DOWN -> UP;
+				case UP -> DOWN;
+			};
+		}
+		public boolean isHorizontal() {
+			return this == LEFT || this == RIGHT;
+		}
+		public Point move(Point point) {
+			return new Point(point.x + deltaX, point.y + deltaY);
+		}
 	}
 	
-	public static class Point {
+	public static final class Point {
 		public final int x;
 		public final int y;
-		private final Direction direction;
 		
-		Point(int x, int y, Direction direction) {
+		Point(int x, int y) {
 			this.x = x;
 			this.y = y;
-			this.direction = direction;
 		}
 		
-		public int estimateCost(Point other) {
+		public int manhattanDistance(Point other) {
 			int dx = this.x - other.x;
 			int dy = this.y - other.y;
-			return dx * dx + dy * dy;
+			return Math.absExact(dx) + Math.absExact(dy);
 		}
 		
 		@Override
 		public int hashCode() {
-			return x + (y << 13) + (direction == null ? 0 : direction.hashCode() << 19);
+			return Objects.hash(x, y);
 		}
 		
 		@Override
 		public boolean equals(Object other) {
 			if (other instanceof Point) {
 				Point element = (Point)other;
-				return element.x == x && element.y == y && element.direction == direction;
+				return element.x == x && element.y == y;
 			}
 			
 			return false;
 		}
 		
-		public boolean equalsIgnoreDirection(Point point) {
-			return point.x == x && point.y == y;
-		}
-		
 		@Override
 		public String toString() {
-			return "Point(x = " + x + ", y = " + y + ", direction = " + direction + ")";
+			return "Point(x = " + x + ", y = " + y + ")";
 		}
 	}
 	
-	private static class Cost implements Comparable<Cost> {
+	private static final class Cost implements Comparable<Cost> {
 		private final int length;
 		private final int turns;
+		private final int heuristicCost;
 		
-		Cost(int length, int turns) {
+		Cost(int length, int turns, int heuristic) {
 			this.length = length;
 			this.turns = turns;
+			this.heuristicCost = heuristic;
 		}
 		
+		public int score() {
+			return this.turns * 5 + this.length + this.heuristicCost;
+		}
+
 		@Override
 		public int compareTo(Cost other) {
-			int turns = this.turns - other.turns;
-			if (turns != 0) {
-				return turns;
-			}
-			
-			return this.length - other.length;
+			return Integer.compare(this.score(), other.score());
 		}
 		
 		@Override
 		public int hashCode() {
-			return length + (turns << 13);
+			return Objects.hash(length, turns, heuristicCost);
 		}
 		
 		@Override
 		public boolean equals(Object other) {
 			if (other instanceof Cost) {
 				Cost element = (Cost)other;
-				return element.length == length && element.turns == turns;
+				return element.length == length 
+					&& element.turns == turns 
+					&& element.heuristicCost == heuristicCost;
 			}
 			
 			return false;
@@ -277,7 +261,43 @@ public class PathFinding {
 		
 		@Override
 		public String toString() {
-			return "Cost(length = " + length + ", turns = " + turns + ")";
+			return String.format(
+				"Cost(length = %s, turns = %s, heuristicCost = %s)",
+				length, turns, heuristicCost
+			);
+		}
+	}
+
+	private static final class Node implements Comparable<Node> {
+		private final Cost cost;
+		private final Point point;
+		private final Point parent;
+		private final Direction directionEntered;
+		public Node(Cost cost, Point point, Point parent, Direction directionEntered) {
+			this.cost = cost;
+			this.point = point;
+			this.parent = parent;
+			this.directionEntered = directionEntered;
+		}
+
+		// Comparisons are only based on cost.
+		// The rest is extra data which tags along.
+		@Override
+		public int compareTo(Node o) {
+			return this.cost.compareTo(o.cost);
+		}
+		@Override
+		public boolean equals(Object other) {
+			if (other instanceof Node) {
+				Node element = (Node)other;
+				return this.cost.equals(element.cost);
+			}
+			
+			return false;
+		}
+		@Override
+		public int hashCode() {
+			return Objects.hash(cost);
 		}
 	}
 }

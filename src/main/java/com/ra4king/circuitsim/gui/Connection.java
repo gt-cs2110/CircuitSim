@@ -58,6 +58,16 @@ public abstract class Connection {
 		return 6;
 	}
 	
+	/**
+	 * Checks if this connection is at the given circuit coordinates.
+	 * @param x the X coord
+	 * @param y the Y coord
+	 * @return whether this connection is at this coordinate.
+	 */
+	public boolean isAt(int x, int y) {
+		return this.getX() == x && this.getY() == y;
+	}
+
 	public void paint(GraphicsContext graphics, CircuitState circuitState) {
 		GuiUtils.setBitColor(graphics, circuitState, getLinkWires());
 		graphics.fillOval(getScreenX(), getScreenY(), getScreenWidth(), getScreenHeight());

@@ -21,30 +21,68 @@ import com.ra4king.circuitsim.simulator.SimulationException;
 import com.ra4king.circuitsim.simulator.Simulator;
 
 import javafx.beans.property.BooleanProperty;
+import javafx.geometry.BoundingBox;
 import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
+import javafx.scene.Node;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.MenuItem;
-import javafx.scene.control.ScrollPane;
+import javafx.scene.input.ContextMenuEvent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
+import javafx.scene.input.ZoomEvent;
 import javafx.scene.paint.Color;
 import javafx.scene.text.FontSmoothingType;
 import javafx.scene.text.Text;
 import javafx.util.Pair;
 
 /**
+ * Wrapper in charge of the GUI for managing a {@link CircuitBoard}.
+ * This class also handles the mouse and keyboard interactions
+ * that enable displaying and editing of a given circuit.
+ * 
+ * <h3>Coordinate Systems</h3>
+ * 
+ * Due to the nature of this class, there are 3 different coordinate systems involved in its
+ * implementation. To reduce redundancy, they will be given the following names:
+ * <ol>
+ *     <li>
+ *         <b>Circuit Coordinate System</b>: An integer coordinate system that increments in tiles.
+ *         The position of ports and components are defined in this coordinate system.
+ *         This coordinate system is returned by methods such as {@link GuiElement#getX()} and 
+ *         {@link GuiElement#getY()} and is stored as two int variables.
+ *     </li>
+ *     <li>
+ *         <b>Canvas Coordinate System</b>: A double coordinate system representing the graphics 
+ *         before any transforms (particularly scaling and translating). The graphics are defined
+ *         under this coordinate system. Note that 1 tile in the circuit coordinate system 
+ *         corresponds to {@link GuiUtils#BLOCK_SIZE} units in the canvas coordinate system.
+ *         This coordinate system is returned by methods such as {@link GuiElement#getScreenX()} and
+ *         {@link GuiElement#getScreenY} and is stored as two double variables or a {@link Point2D}.
+ *     </li>
+ *     <li>
+ *         <b>Pixel Coordinate System</b>: A double coordinate system representing the graphics
+ *         after all transforms (particularly scaling and translating). 1 unit in the pixel coordinate
+ *         system physically corresponds to a pixel in the Scene, so any coordinate values from
+ *         outside CircuitManager typically will be in this system. This system directly corresponds to
+ *         the local coordinate system in JavaFX.
+ *         This coordinate system is returned by methods such as {@link Canvas#getWidth()}, 
+ *         {@link Canvas#getHeight()}, {@link MouseEvent#getX()}, {@link MouseEvent#getY()}, etc. and 
+ *         is stored as two double variables or a {@link Point2D}.
+ *     </li>
+ * </ol>
+ * 
  * @author Roi Atalla
  */
 public class CircuitManager {
 	private enum SelectingState {
 		IDLE,
-		HIGHLIGHT_DRAGGED,
+		BACKGROUND_DRAGGED,
 		ELEMENT_SELECTED,
 		CONNECTION_SELECTED,
 		ELEMENT_DRAGGED,
@@ -55,15 +93,41 @@ public class CircuitManager {
 	private SelectingState currentState = SelectingState.IDLE;
 	
 	private final CircuitSim simulatorWindow;
-	private final ScrollPane canvasScrollPane;
 	private final BooleanProperty showGrid;
 	private final CircuitBoard circuitBoard;
 	
-	private ContextMenu menu;
-	
+	/**
+	 * The position of the last mouse interaction on the Canvas
+	 * under the (untransformed) canvas coordinate space.
+	 */
 	private Point2D lastMousePosition = new Point2D(0, 0);
+	/**
+	 * The position of the last mouse press on the Canvas
+	 * under the (untransformed) canvas coordinate space.
+	 */
 	private Point2D lastMousePressed = new Point2D(0, 0);
-	
+	/**
+	 * The amount to translate the origin in the pixel coordinate space.
+	 * 
+	 * (0, 0) in canvas coordinate space 
+	 * maps to (tx * scale, ty * scale) in pixel coordinate space.
+	 */
+	private Point2D translateOrigin = new Point2D(0, 0);
+
+	/**
+	 * The position of the last mouse press on the Canvas
+	 * under pixel coordinate space.
+	 * 
+	 * This is used for panning.
+	 */
+	private Point2D lastMousePressedPan = new Point2D(0, 0);
+	/**
+	 * A temporary value which holds the translate origin on mouse press.
+	 * 
+	 * This is used for panning.
+	 */
+	private Point2D translateOriginBeforePan = new Point2D(0, 0);
+
 	private GuiElement lastPressed;
 	private boolean lastPressedConsumed;
 	private KeyCode lastPressedKeyCode;
@@ -74,7 +138,28 @@ public class CircuitManager {
 	private boolean isDraggedHorizontally;
 	private boolean isCtrlDown;
 	private boolean isShiftDown;
-	
+	/**
+	 * A boolean that indicates whether a scroll should zoom or pan.
+	 */
+	private boolean zoomOnScroll;
+	/**
+	 * A boolean that indicates whether the user has a trackpad 
+	 * (as opposed to a mouse wheel).
+	 * 
+	 * It is unfortunately difficult to track whether a scroll event 
+	 * is done with a trackpad or a scroll wheel while also maintaining trackpad inertia.
+	 * 
+	 * Note that trackpads trigger the scrollStart/scrollEnd events, while mouse wheels don't.
+	 * So, you would think that setting this field in the interval between those two events would work,
+	 * but it doesn't because inertial scroll events can happen after scrollEnd.
+	 * 
+	 * The way this variable is handled is basically:
+	 * - set usingTrackpad to true when scrollStart (because we know we're trackpadding there)
+	 * - set usingTrackpad to false during an event where scrolling can't happen (because we know scrolling has ended!)
+	 * Not perfect, but it'll catch most cases and the case where it fails is super unlikely (right?)
+	 */
+	private boolean usingTrackpad;
+
 	private final Circuit dummyCircuit = new Circuit("Dummy", new Simulator());
 	private ComponentPeer<?> potentialComponent;
 	private ComponentCreator<?> componentCreator;
@@ -88,68 +173,10 @@ public class CircuitManager {
 	private long lastExceptionTime;
 	private static final long SHOW_ERROR_DURATION = 3000;
 	
-	private boolean needsRepaint;
-	
-	CircuitManager(String name, CircuitSim simulatorWindow, ScrollPane canvasScrollPane, Simulator simulator, BooleanProperty showGrid) {
+	CircuitManager(String name, CircuitSim simulatorWindow, Simulator simulator, BooleanProperty showGrid) {
 		this.simulatorWindow = simulatorWindow;
-		this.canvasScrollPane = canvasScrollPane;
 		this.showGrid = showGrid;
 		circuitBoard = new CircuitBoard(name, this, simulator, simulatorWindow.getEditHistory());
-		
-		getCanvas().setOnContextMenuRequested(event -> {
-			menu = new ContextMenu();
-			
-			MenuItem copy = new MenuItem("Copy");
-			copy.setOnAction(event1 -> simulatorWindow.copySelectedComponents());
-			
-			MenuItem cut = new MenuItem("Cut");
-			cut.setOnAction(event1 -> simulatorWindow.cutSelectedComponents());
-			
-			MenuItem paste = new MenuItem("Paste");
-			paste.setOnAction(event1 -> simulatorWindow.pasteFromClipboard());
-			
-			MenuItem delete = new MenuItem("Delete");
-			delete.setOnAction(event1 -> {
-				mayThrow(() -> circuitBoard.removeElements(selectedElements));
-				setSelectedElements(Collections.emptySet());
-				reset();
-			});
-			
-			Optional<ComponentPeer<?>>
-				any =
-				circuitBoard
-					.getComponents()
-					.stream()
-					.filter(component -> component.containsScreenCoord((int)Math.round(
-						                                                   event.getX() * simulatorWindow.getScaleFactorInverted()),
-					                                                   (int)Math.round(event.getY() *
-					                                                                   simulatorWindow.getScaleFactorInverted())))
-					.findAny();
-			
-			if (any.isPresent()) {
-				if (isCtrlDown) {
-					Set<GuiElement> selected = new HashSet<>(getSelectedElements());
-					selected.add(any.get());
-					setSelectedElements(selected);
-				} else if (!getSelectedElements().contains(any.get())) {
-					setSelectedElements(Collections.singleton(any.get()));
-				}
-			}
-			
-			if (getSelectedElements().size() > 0) {
-				menu.getItems().addAll(copy, cut, paste, delete);
-			} else {
-				menu.getItems().add(paste);
-			}
-			
-			if (getSelectedElements().size() == 1) {
-				menu.getItems().addAll(getSelectedElements().iterator().next().getContextMenuItems(this));
-			}
-			
-			if (menu.getItems().size() > 0) {
-				menu.show(getCanvas(), event.getScreenX(), event.getScreenY());
-			}
-		});
 	}
 	
 	public void setName(String name) {
@@ -195,9 +222,8 @@ public class CircuitManager {
 		startConnection = null;
 		endConnection = null;
 		inspectLinkWires = null;
-		simulatorWindow.updateCanvasSize(this);
 		
-		setNeedsRepaint();
+		simulatorWindow.setNeedsRepaint();
 	}
 	
 	public void destroy() {
@@ -208,14 +234,25 @@ public class CircuitManager {
 		return simulatorWindow;
 	}
 	
-	public ScrollPane getCanvasScrollPane() {
-		return canvasScrollPane;
+	/**
+	 * @return the bounds for the circuit board (in the circuit coordinate system).
+	 */
+	public Bounds getCircuitBounds() {
+		Set<GuiElement> elements = new HashSet<>();
+		elements.addAll(this.getSelectedElements());
+		elements.addAll(this.getCircuitBoard().getComponents());
+		for (LinkWires links : this.getCircuitBoard().getLinks()) {
+			elements.addAll(links.getWires());
+		}
+
+		int minX = elements.stream().mapToInt(el -> el.getX()).min().orElse(5) - 5;
+		int minY = elements.stream().mapToInt(el -> el.getY()).min().orElse(5) - 5;
+		int maxX = elements.stream().mapToInt(el -> el.getX() + el.getWidth()).max().orElse(0) + 5;
+		int maxY = elements.stream().mapToInt(el -> el.getY() + el.getHeight()).max().orElse(0) + 5;
+
+		return new BoundingBox(minX, minY, maxX - minX, maxY - minY);
 	}
-	
-	public Canvas getCanvas() {
-		return (Canvas)canvasScrollPane.getContent();
-	}
-	
+
 	public Circuit getCircuit() {
 		return circuitBoard.getCircuit();
 	}
@@ -249,14 +286,6 @@ public class CircuitManager {
 		selectedElements.clear();
 		selectedElements.addAll(elements);
 		updateSelectedProperties();
-	}
-	
-	boolean needsRepaint() {
-		return needsRepaint;
-	}
-	
-	void setNeedsRepaint() {
-		needsRepaint = true;
 	}
 	
 	private Properties getCommonSelectedProperties() {
@@ -351,30 +380,76 @@ public class CircuitManager {
 		isDraggedHorizontally = false;
 		startConnection = null;
 		endConnection = null;
-		setNeedsRepaint();
+		simulatorWindow.setNeedsRepaint();
 	}
 	
-	public void paint() {
-		needsRepaint = false;
-		
-		GraphicsContext graphics = getCanvas().getGraphicsContext2D();
-		
+	/**
+	 * Converts a coordinate in the pixel coordinate system to the canvas coordinate system
+	 * (by undoing the transforms applied.)
+	 * 
+	 * @param x Pixel X
+	 * @param y Pixel Y
+	 * @return the coordinate in the canvas coordinate system
+	 */
+	private Point2D pixelToCanvasCoord(double x, double y) {
+		return new Point2D(x, y)
+			.multiply(simulatorWindow.getScaleFactorInverted())
+			.subtract(translateOrigin);
+	}
+
+	/**
+	 * Sets `translateOrigin`, but restricts newOrigin to not display any out-of-bounds values
+	 * @param newOrigin the new origin
+	 */
+	public void setTranslate(Point2D newOrigin) {
+		double x = Math.min(0, newOrigin.getX());
+		double y = Math.min(0, newOrigin.getY());
+		translateOrigin = new Point2D(x, y);
+	}
+
+	public void paint(Canvas canvas) {
+		if (canvas == null) return;
+		GraphicsContext graphics = canvas.getGraphicsContext2D();
 		graphics.save();
 		try {
 			graphics.setFont(GuiUtils.getFont(13));
 			graphics.setFontSmoothingType(FontSmoothingType.LCD);
 			
+			// Set a background.
 			boolean drawGrid = showGrid.getValue();
-			graphics.setFill(drawGrid ? Color.LIGHTGRAY : Color.WHITE);
-			graphics.fillRect(0, 0, getCanvas().getWidth(), getCanvas().getHeight());
+			graphics.setFill(drawGrid ? Color.DARKGRAY : Color.WHITE);
+			graphics.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
 			
+			// Perform graphics transform.
+			//
+			// The transformation order here is reversed (like matrix multiplication), so:
+			// Canvas -> Pixel: translate by (+tx, +ty), then scale by (scale)
+			// Pixel -> Canvas: scale by (1/scale), then translate by (-tx, -ty)
 			graphics.scale(simulatorWindow.getScaleFactor(), simulatorWindow.getScaleFactor());
+			graphics.translate(translateOrigin.getX(), translateOrigin.getY());
 			
-			graphics.setFill(Color.BLACK);
+			// Draw the light background and grid on the part of the canvas visible on the screen.
 			if (drawGrid) {
-				double scaleInverted = simulatorWindow.getScaleFactorInverted();
-				for (int i = 0; i < getCanvas().getWidth() * scaleInverted; i += GuiUtils.BLOCK_SIZE) {
-					for (int j = 0; j < getCanvas().getHeight() * scaleInverted; j += GuiUtils.BLOCK_SIZE) {
+				// Find the start of the tile at pixel (0, 0).
+				Point2D canvasStart = pixelToCanvasCoord(0, 0);
+				canvasStart = canvasStart.subtract(
+					canvasStart.getX() % GuiUtils.BLOCK_SIZE,
+					canvasStart.getY() % GuiUtils.BLOCK_SIZE
+				);
+				// Find the canvas coordinate for the end of the canvas.
+				Point2D canvasEnd = pixelToCanvasCoord(canvas.getWidth(), canvas.getHeight());
+
+				// BG of writable region
+				graphics.setFill(Color.LIGHTGRAY);
+				double bgOriginX = Math.max(0, canvasStart.getX());
+				double bgOriginY = Math.max(0, canvasStart.getY());
+				double bgWidth = canvasEnd.getX() - bgOriginX;
+				double bgHeight = canvasEnd.getY() - bgOriginY;
+				graphics.fillRect(bgOriginX, bgOriginY, bgWidth, bgHeight);
+				// Grid
+				graphics.setFill(Color.BLACK);
+				for (double i = canvasStart.getX(); i < canvasEnd.getX(); i += GuiUtils.BLOCK_SIZE) {
+					for (double j = canvasStart.getY(); j < canvasEnd.getY(); j += GuiUtils.BLOCK_SIZE) {
 						graphics.fillRect(i, j, 1, 1);
 					}
 				}
@@ -556,25 +631,29 @@ public class CircuitManager {
 					}
 					break;
 				}
-				case HIGHLIGHT_DRAGGED: {
-					double startX = Math.min(lastMousePressed.getX(), lastMousePosition.getX());
-					double startY = Math.min(lastMousePressed.getY(), lastMousePosition.getY());
-					double width = Math.abs(lastMousePosition.getX() - lastMousePressed.getX());
-					double height = Math.abs(lastMousePosition.getY() - lastMousePressed.getY());
-					
-					graphics.setStroke(Color.GREEN.darker());
-					graphics.strokeRect(startX, startY, width, height);
+				case BACKGROUND_DRAGGED: {
+					if (!simulatorWindow.isClickMode()) {
+						double startX = Math.min(lastMousePressed.getX(), lastMousePosition.getX());
+						double startY = Math.min(lastMousePressed.getY(), lastMousePosition.getY());
+						double width = Math.abs(lastMousePosition.getX() - lastMousePressed.getX());
+						double height = Math.abs(lastMousePosition.getY() - lastMousePressed.getY());
+						
+						graphics.setStroke(Color.GREEN.darker());
+						graphics.strokeRect(startX, startY, width, height);
+					}
 					break;
 				}
+				default:
+					break;
 			}
 		} finally {
 			graphics.restore();
 		}
 	}
 	
+	@FunctionalInterface
 	interface ThrowableRunnable {
 		void run() throws Exception;
-		
 	}
 	
 	boolean mayThrow(ThrowableRunnable runnable) {
@@ -616,14 +695,14 @@ public class CircuitManager {
 			lastPressedConsumed =
 				lastPressed.keyPressed(this, circuitBoard.getCurrentState(), e.getCode(), e.getText());
 			lastPressedKeyCode = e.getCode();
-			setNeedsRepaint();
+			simulatorWindow.setNeedsRepaint();
 		}
 		
 		if (lastPressed != null && lastPressedConsumed) {
 			return;
 		}
 		
-		setNeedsRepaint();
+		simulatorWindow.setNeedsRepaint();
 		
 		if (e.isShortcutDown()) {
 			isCtrlDown = true;
@@ -631,23 +710,31 @@ public class CircuitManager {
 
 		switch (e.getCode()) {
 			case RIGHT: {
-				e.consume();
-				handleArrowPressed(Direction.EAST);
+				if (currentState != SelectingState.ELEMENT_DRAGGED) {
+					e.consume();
+					handleArrowPressed(Direction.EAST);
+				}
 				break;
 			}
 			case LEFT: {
-				e.consume();
-				handleArrowPressed(Direction.WEST);
+				if (currentState != SelectingState.ELEMENT_DRAGGED) {
+					e.consume();
+					handleArrowPressed(Direction.WEST);
+				}
 				break;
 			}
 			case UP: {
-				e.consume();
-				handleArrowPressed(Direction.NORTH);
+				if (currentState != SelectingState.ELEMENT_DRAGGED) {
+					e.consume();
+					handleArrowPressed(Direction.NORTH);
+				}
 				break;
 			}
 			case DOWN: {
-				e.consume();
-				handleArrowPressed(Direction.SOUTH);
+				if (currentState != SelectingState.ELEMENT_DRAGGED) {
+					e.consume();
+					handleArrowPressed(Direction.SOUTH);
+				}
 				break;
 			}
 			case SHIFT:
@@ -672,6 +759,8 @@ public class CircuitManager {
 				
 				reset();
 				break;
+			default:
+				break;
 		}
 	}
 	
@@ -679,7 +768,7 @@ public class CircuitManager {
 		if (selectedElements.size() == 1 && !e.isShortcutDown()) {
 			GuiElement element = selectedElements.iterator().next();
 			element.keyTyped(this, circuitBoard.getCurrentState(), e.getCharacter());
-			setNeedsRepaint();
+			simulatorWindow.setNeedsRepaint();
 		}
 	}
 	
@@ -687,12 +776,12 @@ public class CircuitManager {
 		if (e.getCode().isModifierKey()) {
 			if (!e.isShortcutDown()) {
 				isCtrlDown = false;
-				setNeedsRepaint();
+				simulatorWindow.setNeedsRepaint();
 			}
 			if (!e.isShiftDown()) {
 				simulatorWindow.setClickMode(false);
 					isShiftDown = false;
-					setNeedsRepaint();
+					simulatorWindow.setNeedsRepaint();
 			}
 		}
 		
@@ -700,7 +789,7 @@ public class CircuitManager {
 			lastPressed.keyReleased(this, circuitBoard.getCurrentState(), e.getCode(), e.getText());
 			lastPressed = null;
 			lastPressedKeyCode = null;
-			setNeedsRepaint();
+			simulatorWindow.setNeedsRepaint();
 		}
 	}
 	
@@ -779,7 +868,7 @@ public class CircuitManager {
 			}
 			
 			if (startConnection != selected) {
-				setNeedsRepaint();
+				simulatorWindow.setNeedsRepaint();
 			}
 			
 			startConnection = selected;
@@ -796,7 +885,7 @@ public class CircuitManager {
 			if (currDiffX == 0 || prevDiffX == 0 ||
 			    currDiffX / Math.abs(currDiffX) != prevDiffX / Math.abs(prevDiffX)) {
 				if (isDraggedHorizontally) {
-					setNeedsRepaint();
+					simulatorWindow.setNeedsRepaint();
 				}
 				
 				isDraggedHorizontally = false;
@@ -805,7 +894,7 @@ public class CircuitManager {
 			if (currDiffY == 0 || prevDiffY == 0 ||
 			    currDiffY / Math.abs(currDiffY) != prevDiffY / Math.abs(prevDiffY)) {
 				if (!isDraggedHorizontally) {
-					setNeedsRepaint();
+					simulatorWindow.setNeedsRepaint();
 				}
 				
 				isDraggedHorizontally = true;
@@ -817,7 +906,7 @@ public class CircuitManager {
 				                            GuiUtils.getCircuitCoord(lastMousePosition.getY()));
 			
 			if (endConnection != connection) {
-				setNeedsRepaint();
+				simulatorWindow.setNeedsRepaint();
 			}
 			
 			endConnection = connection;
@@ -831,34 +920,30 @@ public class CircuitManager {
 			potentialComponent.setY(
 				GuiUtils.getCircuitCoord(lastMousePosition.getY()) - potentialComponent.getHeight() / 2);
 			
-			setNeedsRepaint();
+			simulatorWindow.setNeedsRepaint();
 		}
 	}
-	
+
 	public void mousePressed(MouseEvent e) {
-		if (menu != null) {
-			menu.hide();
-		}
-		
+		this.usingTrackpad = false;
 		if (e.getButton() != MouseButton.PRIMARY) {
 			switch (currentState) {
 				case PLACING_COMPONENT, CONNECTION_SELECTED, CONNECTION_DRAGGED -> reset();
+				default -> {}
 			}
 			
 			return;
 		}
 		
-		lastMousePosition =
-			new Point2D(e.getX() * simulatorWindow.getScaleFactorInverted(),
-			            e.getY() * simulatorWindow.getScaleFactorInverted());
-		lastMousePressed =
-			new Point2D(e.getX() * simulatorWindow.getScaleFactorInverted(),
-			            e.getY() * simulatorWindow.getScaleFactorInverted());
-		
+		lastMousePosition = pixelToCanvasCoord(e.getX(), e.getY());
+		lastMousePressed = pixelToCanvasCoord(e.getX(), e.getY());
+		lastMousePressedPan = new Point2D(e.getX(), e.getY());
+		translateOriginBeforePan = translateOrigin;
+
 		switch (currentState) {
 			case ELEMENT_DRAGGED:
 			case CONNECTION_SELECTED:
-			case HIGHLIGHT_DRAGGED:
+			case BACKGROUND_DRAGGED:
 				break;
 			
 			case IDLE:
@@ -957,7 +1042,7 @@ public class CircuitManager {
 				break;
 		}
 		
-		setNeedsRepaint();
+		simulatorWindow.setNeedsRepaint();
 	}
 	
 	public void mouseReleased(MouseEvent e) {
@@ -965,9 +1050,7 @@ public class CircuitManager {
 			return;
 		}
 		
-		lastMousePosition =
-			new Point2D(e.getX() * simulatorWindow.getScaleFactorInverted(),
-			            e.getY() * simulatorWindow.getScaleFactorInverted());
+		lastMousePosition = pixelToCanvasCoord(e.getX(), e.getY());
 		
 		switch (currentState) {
 			case IDLE:
@@ -1015,14 +1098,21 @@ public class CircuitManager {
 				if (isCtrlDown) {
 					break;
 				}
-			case HIGHLIGHT_DRAGGED:
+			case BACKGROUND_DRAGGED:
+				if (simulatorWindow.isClickMode()) {
+					setTranslate(
+						translateOriginBeforePan
+							.add(e.getX(), e.getY())
+							.subtract(lastMousePressedPan)
+					);
+				}
 				currentState = SelectingState.IDLE;
 				break;
 		}
 		
 		checkStartConnection();
 		
-		setNeedsRepaint();
+		simulatorWindow.setNeedsRepaint();
 	}
 	
 	public void mouseDragged(MouseEvent e) {
@@ -1031,14 +1121,12 @@ public class CircuitManager {
 		}
 		
 		Point2D prevMousePosition = lastMousePosition;
-		lastMousePosition =
-			new Point2D(e.getX() * simulatorWindow.getScaleFactorInverted(),
-			            e.getY() * simulatorWindow.getScaleFactorInverted());
+		lastMousePosition = pixelToCanvasCoord(e.getX(), e.getY());
 		
 		switch (currentState) {
 			case IDLE:
-			case HIGHLIGHT_DRAGGED:
-				currentState = SelectingState.HIGHLIGHT_DRAGGED;
+			case BACKGROUND_DRAGGED:
+				currentState = SelectingState.BACKGROUND_DRAGGED;
 				
 				int startX = (int)(Math.min(lastMousePressed.getX(), lastMousePosition.getX()));
 				int startY = (int)(Math.min(lastMousePressed.getY(), lastMousePosition.getY()));
@@ -1049,15 +1137,23 @@ public class CircuitManager {
 					selectedElements.clear();
 				}
 				
-				setSelectedElements(Stream
-					                    .concat(getSelectedElements().stream(), Stream
-						                    .concat(circuitBoard.getComponents().stream(),
-						                            circuitBoard
-							                            .getLinks()
-							                            .stream()
-							                            .flatMap(link -> link.getWires().stream()))
-						                    .filter(peer -> peer.isWithinScreenCoord(startX, startY, width, height)))
-					                    .collect(Collectors.toSet()));
+				if (simulatorWindow.isClickMode()) {
+					setTranslate(
+						translateOriginBeforePan
+							.add(e.getX(), e.getY())
+							.subtract(lastMousePressedPan)
+					);
+				} else {
+					setSelectedElements(Stream
+											.concat(getSelectedElements().stream(), Stream
+												.concat(circuitBoard.getComponents().stream(),
+														circuitBoard
+															.getLinks()
+															.stream()
+															.flatMap(link -> link.getWires().stream()))
+												.filter(peer -> peer.isWithinScreenCoord(startX, startY, width, height)))
+											.collect(Collectors.toSet()));
+				}
 				break;
 			
 			case ELEMENT_SELECTED:
@@ -1094,19 +1190,17 @@ public class CircuitManager {
 		
 		checkStartConnection();
 		
-		setNeedsRepaint();
+		simulatorWindow.setNeedsRepaint();
 	}
 	
 	private GuiElement lastEntered;
 	
 	public void mouseMoved(MouseEvent e) {
 		Point2D prevMousePosition = lastMousePosition;
-		lastMousePosition =
-			new Point2D(e.getX() * simulatorWindow.getScaleFactorInverted(),
-			            e.getY() * simulatorWindow.getScaleFactorInverted());
+		lastMousePosition = pixelToCanvasCoord(e.getX(), e.getY());
 		
 		if (currentState != SelectingState.IDLE) {
-			setNeedsRepaint();
+			simulatorWindow.setNeedsRepaint();
 		}
 		
 		updatePotentialComponent();
@@ -1132,40 +1226,84 @@ public class CircuitManager {
 					
 					(lastEntered = peer).mouseEntered(this, circuitBoard.getCurrentState());
 					
-					setNeedsRepaint();
+					simulatorWindow.setNeedsRepaint();
 				}
 			} else if (lastEntered != null) {
 				lastEntered.mouseExited(this, circuitBoard.getCurrentState());
 				lastEntered = null;
 				
-				setNeedsRepaint();
+				simulatorWindow.setNeedsRepaint();
 			}
 		} else if (lastEntered != null) {
 			lastEntered.mouseExited(this, circuitBoard.getCurrentState());
 			lastEntered = null;
 			
-			setNeedsRepaint();
+			simulatorWindow.setNeedsRepaint();
 		}
 	}
 	
 	public void mouseEntered(MouseEvent e) {
 		isMouseInsideCanvas = true;
-		setNeedsRepaint();
+		simulatorWindow.setNeedsRepaint();
 	}
 	
 	public void mouseExited(MouseEvent e) {
 		isMouseInsideCanvas = false;
-		setNeedsRepaint();
+		simulatorWindow.setNeedsRepaint();
 	}
 	
-	public void mouseWheelScrolled(ScrollEvent e) {
-		if (isCtrlDown) {
-			if (e.getDeltaY() < 0) {
-				simulatorWindow.zoomOut(e.getX(), e.getY());
-			} else {
-				simulatorWindow.zoomIn(e.getX(), e.getY());
+	/**
+	 * Applies a zoom, setting the new scale to newScale and zooming around the origin.
+	 * @param originX the origin's X coordinate
+	 * @param originY the origin's Y coordinate
+	 * @param zoomFactor the factor to scale by
+	 *     This is a multiplier on the old scale. If the old scale is 0.5x and zoomFactor is 2,
+	 *     this sets the scale to 1.0x.
+	 */
+	private void applyZoom(double originX, double originY, double zoomFactor) {
+		// Zoom
+		double oldScale = simulatorWindow.getScaleFactor();
+		zoomFactor = Math.clamp(oldScale * zoomFactor, 0.25, 8);
+
+		simulatorWindow.setScaleFactor(zoomFactor);
+		
+		// Zoom in on point.
+		// Let (tx, ty) = translateOrigin.
+		// Pixel (x, y) must be at the same canvas coordinate before and after zooming, 
+		// so we must meet the constraint (x / oldScale - tx = x / newScale - tx').
+		// When you solve this constraint, you get: (tx' = tx - factor * x),
+		// where factor is the value below.
+		double factor = (zoomFactor - oldScale) / (zoomFactor * oldScale);
+		setTranslate(translateOrigin.subtract(factor * originX, factor * originY));
+	}
+
+	public void scrollStarted(ScrollEvent e) {
+		// If user presses control during scroll, it should not change operation.
+		this.zoomOnScroll = this.isCtrlDown;
+		this.usingTrackpad = true;
+	}
+	public void scroll(ScrollEvent e) {
+		boolean useZoom = this.usingTrackpad ? this.zoomOnScroll : this.isCtrlDown;
+		if (useZoom) {
+			// Zoom
+			// We don't need inertia for zoom
+			if (!e.isInertia()) {
+				applyZoom(e.getX(), e.getY(), Math.pow(2, e.getDeltaY() / 32));
 			}
+		} else {
+			// Pan
+			Point2D delta = new Point2D(e.getDeltaX(), e.getDeltaY())
+				.multiply(simulatorWindow.getScaleFactorInverted());
+			setTranslate(translateOrigin.add(delta));
 		}
+		simulatorWindow.setNeedsRepaint();
+	}
+	public void scrollFinished(ScrollEvent e) {
+	}
+	
+	public void zoom(ZoomEvent e) {
+		applyZoom(e.getX(), e.getY(), e.getZoomFactor());
+		simulatorWindow.setNeedsRepaint();
 	}
 	
 	public void focusGained() {
@@ -1177,6 +1315,64 @@ public class CircuitManager {
 		mouseExited(null);
 		simulatorWindow.setClickMode(false);
 		resetLastPressed();
-		setNeedsRepaint();
+		simulatorWindow.setNeedsRepaint();
+	}
+
+	public void contextMenuRequested(ContextMenuEvent e) {
+		ContextMenu menu = new ContextMenu();
+			
+		MenuItem copy = new MenuItem("Copy");
+		copy.setOnAction(event1 -> simulatorWindow.copySelectedComponents());
+		
+		MenuItem cut = new MenuItem("Cut");
+		cut.setOnAction(event1 -> simulatorWindow.cutSelectedComponents());
+		
+		MenuItem paste = new MenuItem("Paste");
+		paste.setOnAction(event1 -> simulatorWindow.pasteFromClipboard());
+		
+		MenuItem delete = new MenuItem("Delete");
+		delete.setOnAction(event1 -> {
+			mayThrow(() -> circuitBoard.removeElements(selectedElements));
+			setSelectedElements(Collections.emptySet());
+			reset();
+		});
+		
+		Optional<ComponentPeer<?>>
+			any =
+			circuitBoard
+				.getComponents()
+				.stream()
+				.filter(component -> component.containsScreenCoord((int)Math.round(
+																	   e.getX() * simulatorWindow.getScaleFactorInverted()),
+																   (int)Math.round(e.getY() *
+																				   simulatorWindow.getScaleFactorInverted())))
+				.findAny();
+		
+		if (any.isPresent()) {
+			if (isCtrlDown) {
+				Set<GuiElement> selected = new HashSet<>(getSelectedElements());
+				selected.add(any.get());
+				setSelectedElements(selected);
+			} else if (!getSelectedElements().contains(any.get())) {
+				setSelectedElements(Collections.singleton(any.get()));
+			}
+		}
+		
+		if (getSelectedElements().size() > 0) {
+			menu.getItems().addAll(copy, cut, paste, delete);
+		} else {
+			menu.getItems().add(paste);
+		}
+		
+		if (getSelectedElements().size() == 1) {
+			menu.getItems().addAll(getSelectedElements().iterator().next().getContextMenuItems(this));
+		}
+		
+		if (menu.getItems().size() > 0) {
+			if (e.getTarget() instanceof Node) {
+				Node target = (Node) e.getTarget();
+				menu.show(target.getScene().getWindow(), e.getScreenX(), e.getScreenY());
+			}
+		}
 	}
 }

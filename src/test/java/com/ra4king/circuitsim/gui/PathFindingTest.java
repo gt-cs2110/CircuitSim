@@ -27,7 +27,7 @@ public class PathFindingTest {
 			return LocationPreference.VALID;
 		};
 		
-		assertThat(PathFinding.bestPath(3, 0, 3, 6, validFn).getKey()).containsExactly(new Wire(null, 3, 6, 2, true),
+		assertThat(PathFinding.bestPath(3, 0, 3, 6, validFn)).containsExactly(new Wire(null, 3, 6, 2, true),
 		                                                                               new Wire(null, 3, 0, 2, true),
 		                                                                               new Wire(null, 5, 0, 6, false));
 	}
@@ -50,7 +50,7 @@ public class PathFindingTest {
 			return LocationPreference.VALID;
 		};
 		
-		assertThat(PathFinding.bestPath(0, 0, 5, 3, validFn).getKey()).containsExactly(new Wire(null, 0, 0, 6, false),
+		assertThat(PathFinding.bestPath(0, 0, 5, 3, validFn)).containsExactly(new Wire(null, 0, 0, 6, false),
 		                                                                               new Wire(null, 0, 6, 6, true),
 		                                                                               new Wire(null, 6, 3, 3, false),
 		                                                                               new Wire(null, 5, 3, 1, true));
