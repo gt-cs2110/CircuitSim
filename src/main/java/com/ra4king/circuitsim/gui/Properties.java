@@ -8,6 +8,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 import com.ra4king.circuitsim.gui.properties.IntegerString;
+import com.ra4king.circuitsim.gui.properties.IntegerString.IntegerStringValidator;
 import com.ra4king.circuitsim.gui.properties.PropertyListValidator;
 import com.ra4king.circuitsim.gui.properties.PropertyValidators;
 
@@ -224,7 +225,12 @@ public class Properties {
 	}
 	
 	public enum Base {
-		BINARY, HEXADECIMAL, DECIMAL
+		BINARY(2), HEXADECIMAL(16), DECIMAL(10);
+
+		public final int value;
+		private Base(int value) {
+			this.value = value;
+		}
 	}
 	
 	static {
@@ -263,14 +269,28 @@ public class Properties {
 		
 		BASE = new Property<>("Base", "Display Base", new PropertyListValidator<>(Base.values()), Base.BINARY);
 		
-		VALUE = new Property<>(
-			"Value",
-			"Value",
-			"Three input formats supported: decimal, hexadecimal (with 0x prefix), and binary " + "(with 0b prefix).",
-			PropertyValidators.INTEGER_VALIDATOR,
-			new IntegerString(0));
+		VALUE = Properties.VALUE(10);
 	}
 	
+	/**
+	 * A generic integer input.
+	 * @param defaultBase The default base to interpret the string as. 
+	 * (Note: the `Properties.VALUE` static field exists which is equivalent to `Properties.VALUE(10)`).
+	 * 
+	 * There should only be one `VALUE` input per peer (since they all use the same "Value" property name).
+	 * 
+	 * @return the Property representing this generic integer input.
+	 */
+	public static Property<IntegerString> VALUE(int defaultBase) {
+		return new Property<>(
+			"Value",
+			"Value",
+			"Three input formats supported: decimal, hexadecimal (with 0x prefix), and binary (with 0b prefix).",
+			new IntegerStringValidator(defaultBase),
+			new IntegerString(0)
+		);
+	}
+
 	public static class Property<T> {
 		public final String name;
 		public String display;
@@ -364,7 +384,7 @@ public class Properties {
 					try {
 						onAction.accept(parse(newValue));
 					} catch (Exception exc) {
-						exc.printStackTrace();
+						System.err.println("Input error: " + exc.getMessage());
 						valueField.setText(toString(value));
 					}
 				}
