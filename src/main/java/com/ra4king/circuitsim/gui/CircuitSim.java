@@ -1,5 +1,8 @@
 package com.ra4king.circuitsim.gui;
 
+import java.awt.Taskbar;
+import java.awt.Taskbar.Feature;
+import java.awt.Toolkit;
 import java.awt.image.RenderedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -1913,8 +1916,20 @@ public class CircuitSim extends Application {
 		// Default to showing the grid background
 		this.showGridProp = new SimpleBooleanProperty(true);
 		
+		// Windows & Linux icon:
 		stage.getIcons().add(new Image(getClass().getResourceAsStream("/images/Icon.png")));
-		
+		// macOS dock icon:
+        if (Taskbar.isTaskbarSupported()) {
+            Taskbar taskbar = Taskbar.getTaskbar();
+
+            if (taskbar.isSupported(Feature.ICON_IMAGE)) {
+                Toolkit defaultToolkit = Toolkit.getDefaultToolkit();
+                java.awt.Image dockIcon = defaultToolkit.getImage(getClass().getResource("/images/IconMacOS.png"));
+                taskbar.setIconImage(dockIcon);
+            }
+
+        }
+
 		bitSizeSelect = new ComboBox<>();
 		for (int i = 1; i <= 32; i++) {
 			bitSizeSelect.getItems().add(i);
