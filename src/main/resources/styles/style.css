@@ -1,48 +1,85 @@
 /* style.css */
 .root {
+    /* App background color */
     -fx-background-color: #f0f0f0;
+
+    /* The background color of a pressable button. */
+    -csim-btn-color: -csim-btn-color-base;
+    /* The text color of a pressable button. */
+    -csim-btn-text-color: white;
+    /* Button color palette */
+    -csim-btn-color-base: #00692c;
+    -csim-btn-color-hover: derive(-csim-btn-color-base, 25%);
+    -csim-btn-color-pressed: derive(-csim-btn-color-base, 50%);
+
+    /* The background color of a toggleable button. */
+    -csim-toggle-btn-color: -csim-toggle-btn-color-base;
+    /* The text color of a toggleable button. */
+    -csim-toggle-btn-text-color: ladder(-csim-toggle-btn-color, white 49%, black 50%);
+    -csim-toggle-btn-border-color: derive(-csim-toggle-btn-color, -25%);
+    /* Toggle button color palette */
+    -csim-toggle-btn-color-base: #DDDDDD;
+    -csim-toggle-btn-color-hover: derive(-csim-toggle-btn-color-base, 33%);
+    -csim-toggle-btn-color-pressed: #01ad49;
+    -csim-toggle-btn-color-pressed-hover: derive(-csim-toggle-btn-color-pressed, 33%);
+
+    /* The background color of a dropdown list item. */
+    -csim-dropdown-btn-color: -csim-dropdown-btn-color-base;
+    /* The text color of a dropdown list item. */
+    -csim-dropdown-btn-text-color: ladder(-csim-dropdown-btn-color, white 49%, black 50%);
+     /* Dropdown list item palette  */
+     -csim-dropdown-btn-color-base: #D0F8FF;
+     -csim-dropdown-btn-color-hover: derive(-csim-dropdown-btn-color-base, 33%);
+     -csim-dropdown-btn-color-pressed: #0066FF;
+     -csim-dropdown-btn-color-pressed-hover: derive(-csim-dropdown-btn-color-pressed, 33%);
+
 }
 
+/* Buttons */
 .button {
-    -fx-background-color: #006a23;
+    -fx-background-color: -csim-btn-color;
+    -fx-text-fill: -csim-btn-text-color;
     -fx-background-radius: 8;
-    -fx-text-fill: white;
     -fx-font-size: 14px;
 }
 .button:hover {
-    -fx-background-color: #003a00;
+    -csim-btn-color: -csim-btn-color-hover;
+}
+.button:armed {
+    -csim-btn-color: -csim-btn-color-pressed;
 }
 
 .toggle-button {
-    -fx-background-color: #DDDDDD;
-    -fx-text-fill: black;
+    -fx-background-color: -csim-toggle-btn-border-color, -csim-toggle-btn-color;
+    -fx-background-insets: 0, 1;
+    -fx-text-fill: -csim-toggle-btn-text-color;
 }
 .toggle-button:hover {
-    -fx-background-color: #CCF0CC;
+    -csim-toggle-btn-color: -csim-toggle-btn-color-hover;
 }
 .toggle-button:selected {
-    -fx-background-color: #AAAAAA;
+    -csim-toggle-btn-color: -csim-toggle-btn-color-pressed;
 }
 .toggle-button:hover:selected {
-    -fx-background-color: #99C099;
+    -csim-toggle-btn-color: -csim-toggle-btn-color-pressed-hover;
 }
 
-.new-component {
-    -fx-text-fill: #000;
+/* Button for creating new components */
+.new-component-btn {
     -fx-min-height: 48px;
     -fx-max-width: 200px;
     -fx-padding: 8 8 8 8;
     -fx-background-radius: 8;
 }
 
-.props-menu {
-    -fx-background-color: #396;
-}
+/* Properties panel */
 
+/* Properties panel: Content background */
 .props-table {
     -fx-background-color: #FFF;
 }
 
+/* Properties panel: Label column */
 .props-menu-label {
     -fx-background-color: transparent;
     -fx-text-fill: black;
@@ -50,31 +87,32 @@
     -fx-padding: 8 8 8 16;
 }
 
+/* Properties panel: Value column */
 .props-menu-value {
     -fx-background-color: transparent;
-    -fx-text-fill: #000;
+    -fx-text-fill: black;
     -fx-min-width: 250;
     -fx-padding: 8 8 8 0;
 }
 
-.property-list-validator {
-}
-
+/* Property list buttons */
 .property-list-validator-button {
-    -fx-background-color: #D0F8FF;
+    -fx-background-color: -csim-dropdown-btn-color;
+    -fx-text-fill: -csim-dropdown-btn-text-color;
     -fx-min-width: 36px;
 }
 .property-list-validator-button:hover {
-    -fx-background-color: #75b1ff;
+    -csim-dropdown-btn-color: -csim-dropdown-btn-color-hover;
 }
 .property-list-validator-button:selected {
-    -fx-background-color: #06F;
-    -fx-text-fill: white;
+    -csim-dropdown-btn-color: -csim-dropdown-btn-color-pressed;
 }
 .property-list-validator-button:hover:selected {
-    -fx-background-color: #06F;
-    -fx-text-fill: white;
+    -csim-dropdown-btn-color: -csim-dropdown-btn-color-pressed-hover;
 }
+
+/* TODO (for everything below this comment) */
+/* Reduce number of custom colors */
 
 .property-list-validator-dropdown {
     -fx-background-color: #AEE;

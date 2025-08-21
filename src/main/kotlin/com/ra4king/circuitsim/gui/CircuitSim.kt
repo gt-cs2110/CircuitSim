@@ -398,7 +398,7 @@ class CircuitSim @JvmOverloads constructor(val openWindow: Boolean, val init: Bo
         button.minHeight = 30.0
         button.maxWidth = Double.Companion.MAX_VALUE
         button.onAction = EventHandler { modifiedSelection(if (button.isSelected) componentInfo else null) }
-        button.styleClass.add("new-component")
+        button.styleClass.add("new-component-btn")
         GridPane.setHgrow(button, Priority.ALWAYS)
         return button
     }
@@ -443,7 +443,7 @@ class CircuitSim @JvmOverloads constructor(val openWindow: Boolean, val init: Bo
                 component.connections.forEach { it.paint(icon.graphicsContext2D, null) }
 
                 val toggleButton = ToggleButton(pair.first.name.second, icon)
-                toggleButton.styleClass.add("new-component")
+                toggleButton.styleClass.add("new-component-btn")
                 toggleButton.alignment = Pos.CENTER_LEFT
                 toggleButton.toggleGroup = buttonsToggleGroup
                 toggleButton.minHeight = 30.0
