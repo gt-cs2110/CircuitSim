@@ -18,7 +18,7 @@ data class StartContext(
     val circuitCanvas: Canvas,
     val simulationEnabled: CheckMenuItem,
     val clickMode: ToggleButton,
-    val scaleFactorInput: TextField,
+    val scaleFactorSlider: Slider,
     val bitSizeSelect: ComboBox<Int>,
     val buttonTabPane: Accordion,
     val buttonsToggleGroup: ToggleGroup,

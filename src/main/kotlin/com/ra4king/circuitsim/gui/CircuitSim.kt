@@ -114,13 +114,11 @@ class CircuitSim @JvmOverloads constructor(val openWindow: Boolean, val init: Bo
         set(value) {
             if (!clickedDirectly) clickMode.isSelected = value
         }
-    val scaleFactorInput get() = startContext.scaleFactorInput
+    val scaleFactorSlider get() = startContext.scaleFactorSlider
     var scaleFactor
-        get() = scaleFactorInput.textFormatter.value as Double
+        get() = scaleFactorSlider.value
         set(value) {
-            @Suppress("UNCHECKED_CAST")
-            val formatter = scaleFactorInput.textFormatter as TextFormatter<Double>
-            formatter.value = clampScaleFactor(value)
+            scaleFactorSlider.value = clampScaleFactor(value)
         }
     val scaleFactorInverted get() = 1.0 / scaleFactor
     val bitSizeSelect get() = startContext.bitSizeSelect
@@ -1337,7 +1335,7 @@ class CircuitSim @JvmOverloads constructor(val openWindow: Boolean, val init: Bo
             canvas,
             CheckMenuItem("Simulation Enabled"),
             ToggleButton("Click Mode (Shift)"),
-            TextField(),
+            Slider(),
             ComboBox(),
             Accordion(),
             ToggleGroup(),
@@ -1369,22 +1367,13 @@ class CircuitSim @JvmOverloads constructor(val openWindow: Boolean, val init: Bo
             modifiedSelection(selectedComponent)
         }
 
-        scaleFactorInput.maxWidth = 80.0
-        scaleFactorInput.prefWidth = 80.0
-        scaleFactorInput.textFormatter = TextFormatter<Double>(object : StringConverter<Double>() {
-            override fun toString(value: Double?): String? {
-                val df = DecimalFormat("0.0#")
-                df.roundingMode = RoundingMode.HALF_UP
-                return value?.let { df.format(it) } ?: ""
-            }
-
-            override fun fromString(string: String?): Double {
-                return if (string?.isBlank() ?: return 1.0) 1.0
-                else clampScaleFactor(string.toDouble())
-            }
-
-        }, 1.0) { if (it.controlNewText.matches("\\d*(?:\\.\\d*)?".toRegex())) it else null }
-        scaleFactorInput.textFormatter.valueProperty().addListener { _, _, _ -> needsRepaint = true }
+        scaleFactorSlider.min = 0.25
+        scaleFactorSlider.max = 4.0
+        scaleFactorSlider.value = 1.0
+        scaleFactorSlider.isShowTickLabels = false
+        scaleFactorSlider.isShowTickMarks = false
+        scaleFactorSlider.maxWidth = 120.0
+        scaleFactorSlider.valueProperty().addListener { _, _, _ -> needsRepaint = true }
 
         componentLabel.font = getFont(16)
         canvasScrollPane.isFocusTraversable = true
@@ -1790,12 +1779,19 @@ class CircuitSim @JvmOverloads constructor(val openWindow: Boolean, val init: Bo
         bitSizeSelect.styleClass.add("bit-size-dropdown")
         val bitSize = HBox(bitSizeLabel, bitSizeSelect)
         bitSize.styleClass.add("bit-size-box")
+        bitSize.setOnMouseClicked { bitSizeSelect.show() }
+        bitSizeSelect.setOnShowing {
+            bitSize.styleClass.add("showing-dropdown")
+        }
+        bitSizeSelect.setOnHidden {
+            bitSize.styleClass.remove("showing-dropdown")
+        }
         toolbar.items.addAll(
             clickMode, Separator(Orientation.VERTICAL),
             inputPinButton, outputPinButton, andButton, orButton,
             notButton, xorButton, tunnelButton, textButton,
             Separator(Orientation.VERTICAL), bitSize,
-            blank, Label("Scale:"), scaleFactorInput
+            blank, Label("Scale:"), scaleFactorSlider
         )
 
         VBox.setVgrow(canvasPropsSplit, Priority.ALWAYS)
