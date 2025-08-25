@@ -30,7 +30,7 @@
      /* Dropdown list item palette  */
     -csim-dropdown-btn-color-base: #EEEEEE;
     -csim-dropdown-btn-color-hover: derive(-csim-dropdown-btn-color-base, -15%);
-    -csim-dropdown-btn-color-pressed: #CCCCCC;
+    -csim-dropdown-btn-color-pressed: #00692c;
     -csim-dropdown-btn-color-pressed-hover: derive(-csim-dropdown-btn-color-pressed, -10%);
     -csim-dropdown-btn-color-border: #BBBBBB;
 
