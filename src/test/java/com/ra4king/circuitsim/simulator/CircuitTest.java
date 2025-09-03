@@ -8,7 +8,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import kotlin.Unit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -75,9 +74,7 @@ public class CircuitTest {
 			return null;
 		}).when(runnable).run();
 		
-		circuit.updateComponent(oldComponent, newComponent, () -> { runnable.run();
-            return Unit.INSTANCE;
-        });
+		circuit.updateComponent(oldComponent, newComponent, runnable);
 		
 		verify(state).ensureUnlinked(oldComponent, false);
 		verify(oldComponent).uninit(circuit.getTopLevelState());

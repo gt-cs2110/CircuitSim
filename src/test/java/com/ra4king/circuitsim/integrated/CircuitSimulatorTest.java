@@ -98,7 +98,7 @@ public class CircuitSimulatorTest {
 		
 		// Now we can store
 		ram.store(subcircuitState, 0x0000, 0x1234);
-
+		
 		// And load
 		assertThat(ram.load(subcircuitState, 0x0000)).isEqualTo(0x1234);
 	}

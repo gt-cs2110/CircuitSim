@@ -3,20 +3,20 @@ plugins {
 
 	// Apply the application plugin to add support for building a Java application
 	id 'application'
-
-	id 'org.jetbrains.kotlin.jvm' version '2.0.0'
 }
 
 application {
 	// Define the main class for the application
-	mainClass = 'com.ra4king.circuitsim.EntrypointKt'
+	mainClass = 'com.ra4king.circuitsim.gui.CircuitSimRunner'
 }
 group = 'CircuitSim'
 
 ext.moduleName = 'Project.com.ra4king.circuitsim.gui'
 
-kotlin {
-	jvmToolchain( 17 )
+java {
+	toolchain {
+		languageVersion.set(JavaLanguageVersion.of(17))
+	}
 }
 
 // In this section you declare where to find the dependencies of your project
@@ -28,8 +28,6 @@ repositories {
 dependencies {
 	implementation 'com.google.code.gson:gson:2.10'
 
-	// All of these are included due to the CircuitSimRunner hack.
-	// Refer to that module for more details.
 	implementation "org.openjfx:javafx-base:22:win"
 	implementation "org.openjfx:javafx-base:22:linux-aarch64"
 	implementation "org.openjfx:javafx-base:22:linux"
@@ -58,9 +56,10 @@ dependencies {
 	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.0'
 }
 
-// This jar section moves the two architectures (amd64 and aarch64) into their own folder,
-// so that CircuitSimRunner can rely on it for its multi-platform hack.
-// Again, refer to that module for more details.
+test {
+	useJUnitPlatform()
+}
+
 jar {
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 	into 'resources', {
@@ -119,19 +118,20 @@ jar {
 	}
 }
 
-test {
-	useJUnitPlatform()
+compileJava {
+	inputs.property("moduleName", moduleName)
+	doFirst {
+		options.compilerArgs = [
+				'--module-path', classpath.asPath,
+				'--add-modules', 'javafx.controls,javafx.swing',
+				'-Xlint:unchecked','-Xlint:deprecation'
+		]
+		classpath = files()
+	}
 }
 
-// Displays unchecked and deprecation warnings for Java compilations.
-allprojects {
-    tasks.withType(JavaCompile) {
-        options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation"
-    }
-}
-
-tasks.register('createJar', Copy) {
+task createJar(type: Copy) {
 	dependsOn 'jar'
-	into "${layout.buildDirectory}/libs"
+	into "$buildDir/libs"
 	from configurations.runtimeClasspath
 }

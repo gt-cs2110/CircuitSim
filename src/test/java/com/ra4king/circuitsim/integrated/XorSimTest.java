@@ -73,26 +73,26 @@ public class XorSimTest {
 		ain.get().setValue(xor.getCurrentState(), ONE);
 		bin.get().setValue(xor.getCurrentState(), ZERO);
 		sim.stepAll();
-		assertThat(xor.getCurrentState().getLastReceived(cout.get().getPort(Pin.Ports.PORT)).getValue()).isEqualTo(1);
+		assertThat(xor.getCurrentState().getLastReceived(cout.get().getPort(Pin.PORT)).getValue()).isEqualTo(1);
 		
 		// 0^1 = 1
 		ain.get().setValue(xor.getCurrentState(), ZERO);
 		bin.get().setValue(xor.getCurrentState(), ONE);
 		sim.stepAll();
-		assertThat(xor.getCurrentState().getLastReceived(cout.get().getPort(Pin.Ports.PORT)).getValue()).isEqualTo(1);
+		assertThat(xor.getCurrentState().getLastReceived(cout.get().getPort(Pin.PORT)).getValue()).isEqualTo(1);
 		
 		
 		// 1^0 = 1
 		ain.get().setValue(xor.getCurrentState(), ONE);
 		bin.get().setValue(xor.getCurrentState(), ZERO);
 		sim.stepAll();
-		assertThat(xor.getCurrentState().getLastReceived(cout.get().getPort(Pin.Ports.PORT)).getValue()).isEqualTo(1);
+		assertThat(xor.getCurrentState().getLastReceived(cout.get().getPort(Pin.PORT)).getValue()).isEqualTo(1);
 		
 		
 		// 1^1 = 0
 		ain.get().setValue(xor.getCurrentState(), ONE);
 		bin.get().setValue(xor.getCurrentState(), ONE);
 		sim.stepAll();
-		assertThat(xor.getCurrentState().getLastReceived(cout.get().getPort(Pin.Ports.PORT)).getValue()).isEqualTo(0);
+		assertThat(xor.getCurrentState().getLastReceived(cout.get().getPort(Pin.PORT)).getValue()).isEqualTo(0);
 	}
 }

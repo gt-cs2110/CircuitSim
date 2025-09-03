@@ -14,7 +14,6 @@ import com.ra4king.circuitsim.gui.Properties.PropertyValidator;
 import com.ra4king.circuitsim.gui.properties.PropertyMemoryValidator.MemoryLine;
 import com.ra4king.circuitsim.simulator.SimulationException;
 
-import com.ra4king.circuitsim.simulator.components.memory.MemoryUnit;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -46,437 +45,416 @@ import javafx.stage.Stage;
  * @author Roi Atalla
  */
 public class PropertyMemoryValidator implements PropertyValidator<List<MemoryLine>> {
-
-    private final MemoryUnit unit;
-
-    public PropertyMemoryValidator(MemoryUnit unit) {
-        this.unit = unit;
-    }
-
-    public static String formatValue(int value, int dataBits) {
-        if (dataBits < 32) {
-            value &= (1 << dataBits) - 1;
-        }
-        return String.format("%0" + (1 + (dataBits - 1) / 4) + "x", value);
-    }
-
-    public String formatValue(int value) {
-        return formatValue(value, unit.getDataWidth());
-    }
-
-    public static int parseValue(String value) {
-        try {
-            return Integer.parseUnsignedInt(value, 16);
-        } catch (NumberFormatException exc) {
-            throw new SimulationException("Cannot parse invalid hex value: " + value);
-        }
-    }
-
-    @Override
-    public boolean equals(Object other) {
-        if (other instanceof PropertyMemoryValidator) {
-            PropertyMemoryValidator validator = (PropertyMemoryValidator) other;
-            return validator.unit.getAddressWidth() == this.unit.getAddressWidth() && validator.unit.getDataWidth() == this.unit.getDataWidth();
-        }
-
-        return false;
-    }
-
-    public static List<MemoryLine> parseLine(int[] values, BiConsumer<Integer, Integer> memoryListener, int addressBits, int dataBits) {
-        List<MemoryLine> lines = new ArrayList<>();
-
-        int address = 0;
-        MemoryLine currLine = null;
-        for (int value : values) {
-            if (currLine == null) {
-                currLine = new MemoryLine(address);
-            }
-
-            SimpleStringProperty prop = new SimpleStringProperty(formatValue(value, dataBits));
-
-            if (memoryListener != null) {
-                MemoryLine currMemoryLine = currLine;
-                int currSize = currMemoryLine.values.size();
-                prop.addListener(
-                        (observable, oldValue, newValue) ->
-                                memoryListener.accept(currMemoryLine.address + currSize, parseValue(newValue))
-                );
-            }
-
-            currLine.values.add(prop);
-
-            if (currLine.values.size() == 16) {
-                lines.add(currLine);
-                currLine = null;
-                address += 16;
-            }
-        }
-
-        while (address < (1 << addressBits)) {
-            if (currLine == null) {
-                currLine = new MemoryLine(address);
-            }
-
-            currLine.values.add(new SimpleStringProperty("0"));
-
-            if (currLine.values.size() == 16) {
-                lines.add(currLine);
-                currLine = null;
-                address += 16;
-            }
-        }
-
-        if (currLine != null) {
-            lines.add(currLine);
-        }
-
-        return lines;
-    }
-
-    public List<MemoryLine> parseLine(int[] values, BiConsumer<Integer, Integer> memoryListener) {
-        return parseLine(values, memoryListener, unit.getNetAddrBits(), unit.getDataWidth());
-    }
-
-    @Override
-    public List<MemoryLine> parse(String value) {
-        return parseLine(value, unit.getNetAddrBits(), unit.getDataWidth());
-    }
-
-
-    public static List<MemoryLine> parseLine(String contents, int addressBits, int dataBits) {
-        return parseLine(parsePartial(contents, addressBits), null, addressBits, dataBits);
-    }
-
-    private static int[] parsePartial(String contents, int addressBits) {
-        int[] values = new int[1 << addressBits];
-        try (Scanner scanner = new Scanner(contents)) {
-            int length;
-            for (length = 0; length < values.length && scanner.hasNext(); length++) {
-                String piece = scanner.next();
-                if (piece.matches("^\\d+-[\\da-fA-F]+$")) {
-                    String[] split = piece.split("-");
-                    int count = Integer.parseInt(split[0]);
-                    int val = parseValue(split[1]);
-                    for (int j = 0; j < count && length < values.length; j++, length++) {
-                        values[length] = val;
-                    }
-                    length--; // to account for extra increment
-                } else {
-                    values[length] = parseValue(piece);
-                }
-            }
-            return Arrays.copyOf(values, length);
-        }
-    }
-
-    @Override
-    public String toString(List<MemoryLine> lines) {
-        String values = lines.stream().map(MemoryLine::toString).collect(Collectors.joining(" "));
-
-        // expensive I know, but whatever...
-        String[] split = values.split(" ");
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < split.length; ) {
-            int count = 1;
-
-            while ((i + count) < split.length && split[i].equals(split[i + count])) {
-                count++;
-            }
-
-            if (count == 1) {
-                builder.append(split[i]);
-            } else {
-                builder.append(count).append('-').append(split[i]);
-            }
-
-            i += count;
-
-            if (i < split.length) {
-                builder.append(' ');
-            }
-        }
-
-        return builder.length() < values.length() ? builder.toString() : values;
-    }
-
-    @Override
-    public Node createGui(Stage stage, List<MemoryLine> value, Consumer<List<MemoryLine>> onAction) {
-        return new Label("Right click component to edit contents.");
-    }
-
-    private static void copyMemoryValues(List<MemoryLine> dest, List<MemoryLine> src) {
-        for (int i = 0; i < src.size(); i++) {
-            MemoryLine srcLine = src.get(i);
-            MemoryLine tableLine = dest.get(i);
-
-            for (int j = 0; j < srcLine.values.size() && j < tableLine.values.size(); j++) {
-                tableLine.values.get(j).set(srcLine.values.get(j).get());
-            }
-        }
-    }
-
-    public static List<MemoryLine> parseFile(File selectedFile, int addressBits, int dataBits) {
-        if (selectedFile != null && !selectedFile.getPath().equals("null") && !selectedFile.getPath().isEmpty()) {
-            try {
-                String contents = new String(Files.readAllBytes(selectedFile.toPath()));
-                return parseLine(contents, addressBits, dataBits);
-            } catch (Exception exc) {
-                exc.printStackTrace();
-                new Alert(AlertType.ERROR, "Could not open file: " + exc.getMessage()).showAndWait();
-            }
-        }
-        return null;
-    }
-
-    public void createAndShowMemoryWindow(Stage stage, List<MemoryLine> lines) {
-        Stage memoryStage = new Stage();
-        memoryStage.initOwner(stage);
-        memoryStage.setTitle("Modify memory");
-
-        TableView<MemoryLine> tableView = new TableView<>();
-        tableView.getSelectionModel().setCellSelectionEnabled(true);
-        tableView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-        tableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_LAST_COLUMN);
-        tableView.setEditable(true);
-
-        TableColumn<MemoryLine, String> address = new TableColumn<>("Address");
-        address.setStyle("-fx-alignment: CENTER-RIGHT; -fx-background-color: lightgray;");
-        address.setSortable(false);
-        address.setEditable(false);
-        address.setCellValueFactory(param -> new SimpleStringProperty(String.format("%0" + (1 + (unit.getAddressWidth() - 1) / 4) + "x",
-                param.getValue().address * unit.getBytesPerEntry())));
-        tableView.getColumns().add(address);
-
-        int columns = Math.min(1 << unit.getNetAddrBits(), 16);
-        for (int i = 0; i < columns; i++) {
-            int j = i;
-
-            TableColumn<MemoryLine, String> column = new TableColumn<>(String.format("+%x", i * unit.getBytesPerEntry()));
-            column.setStyle("-fx-alignment: CENTER;");
-            column.setSortable(false);
-            column.setEditable(true);
-            column.setCellValueFactory(param -> param.getValue().get(j));
-            column.setCellFactory(c -> new TableCell<>() {
-                private TextField textField;
-                private String oldText;
-
-                @Override
-                public void startEdit() {
-                    oldText = getText();
-                    super.startEdit();
-                    setText(null);
-
-                    textField = new TextField(oldText);
-                    textField.addEventHandler(KeyEvent.KEY_PRESSED, event -> {
-                        if (event.getCode() == KeyCode.ESCAPE) {
-                            textField.setText(oldText);
-                        }
-                        if (event.getCode() == KeyCode.ENTER) {
-                            cancelEdit();
-                        }
-                    });
-                    textField.focusedProperty().addListener((observable, oldValue, newValue) -> {
-                        if (!newValue) {
-                            cancelEdit();
-                        }
-                    });
-
-                    setGraphic(textField);
-                    textField.selectAll();
-                    textField.requestFocus();
-                }
-
-                @Override
-                protected void updateItem(String item, boolean empty) {
-                    super.updateItem(item, empty);
-
-                    if (item == null) {
-                        if (textField != null) {
-                            updateText(textField.getText());
-                        } else {
-                            setText(null);
-                        }
-                    } else {
-                        updateText(item);
-                        if (textField != null) {
-                            textField.setText(item);
-                        }
-                    }
-
-                    setGraphic(null);
-                    tableView.requestFocus();
-                }
-
-                @Override
-                public void cancelEdit() {
-                    super.cancelEdit();
-                    if (textField != null) {
-                        updateText(textField.getText());
-                        textField = null;
-                        setGraphic(null);
-                        tableView.requestFocus();
-                    }
-                }
-
-                private void updateText(String newText) {
-                    String newValue;
-                    try {
-                        newValue = formatValue(parseValue(newText));
-                    } catch (SimulationException exc) {
-                        newValue = oldText;
-                    }
-
-                    setText(newValue);
-
-                    if (getTableRow() != null) {
-                        lines.get(getTableRow().getIndex()).values.get(j).set(newValue);
-                    }
-                }
-            });
-
-            tableView.getColumns().add(column);
-        }
-
-        tableView.setItems(FXCollections.observableList(lines));
-
-        Button loadButton = new Button("Load from file");
-        loadButton.setOnAction(event -> {
-            FileChooser fileChooser = new FileChooser();
-            fileChooser.setTitle("Choose file");
-            fileChooser.setInitialDirectory(new File(System.getProperty("user.dir")));
-            File selectedFile = fileChooser.showOpenDialog(memoryStage);
-            List<MemoryLine> src = parseFile(selectedFile, unit.getNetAddrBits(), unit.getDataWidth());
-            if (src != null)
-                copyMemoryValues(lines, src);
-        });
-        Button saveButton = new Button("Save to file");
-        saveButton.setOnAction(event -> {
-            FileChooser fileChooser = new FileChooser();
-            fileChooser.setTitle("Choose save file");
-            fileChooser.setInitialFileName("Memory.dat");
-            File selectedFile = fileChooser.showSaveDialog(memoryStage);
-            if (selectedFile != null) {
-                List<String> strings = lines.stream().map(MemoryLine::toString).collect(Collectors.toList());
-                try {
-                    Files.write(selectedFile.toPath(), strings);
-                } catch (Exception exc) {
-                    exc.printStackTrace();
-                    new Alert(AlertType.ERROR, "Could not open file: " + exc.getMessage()).showAndWait();
-                }
-            }
-        });
-        Button clearButton = new Button("Clear contents");
-        clearButton.setOnAction(event -> lines.forEach(line -> line.values.forEach(value -> value.set("0"))));
-
-        memoryStage.addEventHandler(KeyEvent.KEY_PRESSED, keyEvent -> {
-            if (keyEvent.isShortcutDown()) {
-                if (keyEvent.getCode() == KeyCode.C) {
-                    ClipboardContent content = new ClipboardContent();
-
-                    StringBuilder ramContent = new StringBuilder();
-                    for (TablePosition<?, ?> selectedCell : tableView.getSelectionModel().getSelectedCells()) {
-                        if (selectedCell.getColumn() > 0) {
-                            ramContent
-                                    .append(lines.get(selectedCell.getRow()).values.get(selectedCell.getColumn() - 1).get())
-                                    .append(" ");
-                        }
-                    }
-
-                    content.putString(ramContent.toString());
-                    Clipboard.getSystemClipboard().setContent(content);
-                } else if (keyEvent.getCode() == KeyCode.V) {
-                    String clipboard = Clipboard.getSystemClipboard().getString();
-                    if (clipboard != null) {
-                        try {
-                            // This is silly.
-                            @SuppressWarnings("unchecked")
-                            ObservableList<TablePosition<?, ?>> selectedCells =
-                                    (ObservableList<TablePosition<?, ?>>)
-                                            (ObservableList<?>) tableView.getSelectionModel().getSelectedCells();
-
-                            int[] values = parsePartial(clipboard, unit.getAddressWidth());
-
-                            if (selectedCells.size() <= 1) {
-                                TablePosition<?, ?>
-                                        selectedCell =
-                                        selectedCells.isEmpty() ? null : selectedCells.get(0);
-                                int row = selectedCell == null ? 0 : selectedCell.getRow();
-                                int col = selectedCell == null ? 0 : selectedCell.getColumn() - 1;
-
-                                if (col >= 0) {
-                                    for (int value : values) {
-                                        lines.get(row).get(col).set(formatValue(value));
-
-                                        if (++col == lines.get(0).values.size()) {
-                                            col = 0;
-                                            row++;
-
-                                            if (row == lines.size()) {
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                for (int i = 0; i < selectedCells.size() && i < values.length; i++) {
-                                    TablePosition<?, ?> selectedCell = selectedCells.get(i);
-                                    if (selectedCell.getColumn() > 0) {
-                                        lines.get(selectedCell.getRow()).values
-                                                .get(selectedCell.getColumn() - 1)
-                                                .set(formatValue(values[i]));
-                                    }
-                                }
-                            }
-                        } catch (Exception exc) {
-                            exc.printStackTrace();
-                            new Alert(AlertType.ERROR, "Invalid clipboard data: " + exc.getMessage()).showAndWait();
-                        }
-                    }
-                }
-            } else if (keyEvent.getCode() == KeyCode.DELETE || keyEvent.getCode() == KeyCode.BACK_SPACE) {
-                for (TablePosition<?, ?> selectedCell : tableView.getSelectionModel().getSelectedCells()) {
-                    if (selectedCell.getColumn() > 0) {
-                        lines.get(selectedCell.getRow()).values.get(selectedCell.getColumn() - 1).set(formatValue(0));
-                    }
-                }
-            } else if (tableView.getEditingCell() == null &&
-                    tableView.getSelectionModel().getSelectedCells().size() == 1 &&
-                    (keyEvent.getCode().isLetterKey() || keyEvent.getCode().isDigitKey())) {
-                @SuppressWarnings("unchecked")
-                TablePosition<MemoryLine, String> selectedCell = tableView.getFocusModel().getFocusedCell();
-                lines.get(selectedCell.getRow()).get(selectedCell.getColumn() - 1).set(keyEvent.getText());
-                tableView.edit(selectedCell.getRow(), selectedCell.getTableColumn());
-            }
-        });
-
-        VBox.setVgrow(tableView, Priority.ALWAYS);
-        Platform.runLater(tableView::refresh);
-
-        memoryStage.setScene(new Scene(new VBox(new HBox(loadButton, saveButton, clearButton), tableView)));
-        memoryStage.sizeToScene();
-        memoryStage.showAndWait();
-    }
-
-    public static class MemoryLine {
-        public final int address;
-        public final List<StringProperty> values;
-
-        public MemoryLine(int address) {
-            this.address = address;
-            values = new ArrayList<>(16);
-        }
-
-        public StringProperty get(int index) {
-            if (index < values.size()) {
-                return values.get(index);
-            }
-
-            return new SimpleStringProperty("");
-        }
-
-        @Override
-        public String toString() {
-            return values.stream().map(StringProperty::get).collect(Collectors.joining(" "));
-        }
-    }
+	private final int addressBits, dataBits;
+	
+	public PropertyMemoryValidator(int addressBits, int dataBits) {
+		this.addressBits = addressBits;
+		this.dataBits = dataBits;
+	}
+	
+	public String formatValue(int value) {
+		if (dataBits < 32) {
+			value &= (1 << dataBits) - 1;
+		}
+		return String.format("%0" + (1 + (dataBits - 1) / 4) + "x", value);
+	}
+	
+	public int parseValue(String value) {
+		try {
+			return Integer.parseUnsignedInt(value, 16);
+		} catch (NumberFormatException exc) {
+			throw new SimulationException("Cannot parse invalid hex value: " + value);
+		}
+	}
+	
+	@Override
+	public boolean equals(Object other) {
+		if (other instanceof PropertyMemoryValidator) {
+			PropertyMemoryValidator validator = (PropertyMemoryValidator)other;
+			return validator.addressBits == this.addressBits && validator.dataBits == this.dataBits;
+		}
+		
+		return false;
+	}
+	
+	public List<MemoryLine> parse(int[] values, BiConsumer<Integer, Integer> memoryListener) {
+		List<MemoryLine> lines = new ArrayList<>();
+		
+		int address = 0;
+		MemoryLine currLine = null;
+		for (int value : values) {
+			if (currLine == null) {
+				currLine = new MemoryLine(address);
+			}
+			
+			SimpleStringProperty prop = new SimpleStringProperty(formatValue(value));
+			
+			if (memoryListener != null) {
+				MemoryLine currMemoryLine = currLine;
+				int currSize = currMemoryLine.values.size();
+				prop.addListener((observable, oldValue, newValue) -> memoryListener.accept(currMemoryLine.address + currSize,
+				                                                                           parseValue(newValue)));
+			}
+			
+			currLine.values.add(prop);
+			
+			if (currLine.values.size() == 16) {
+				lines.add(currLine);
+				currLine = null;
+				address += 16;
+			}
+		}
+		
+		while (address < (1 << addressBits)) {
+			if (currLine == null) {
+				currLine = new MemoryLine(address);
+			}
+			
+			currLine.values.add(new SimpleStringProperty("0"));
+			
+			if (currLine.values.size() == 16) {
+				lines.add(currLine);
+				currLine = null;
+				address += 16;
+			}
+		}
+		
+		if (currLine != null) {
+			lines.add(currLine);
+		}
+		
+		return lines;
+	}
+	
+	@Override
+	public List<MemoryLine> parse(String contents) {
+		return parse(parsePartial(contents), null);
+	}
+	
+	private int[] parsePartial(String contents) {
+		int[] values = new int[1 << addressBits];
+		
+		try (Scanner scanner = new Scanner(contents)) {
+			int length;
+			for (length = 0; length < values.length && scanner.hasNext(); length++) {
+				String piece = scanner.next();
+				if (piece.matches("^\\d+-[\\da-fA-F]+$")) {
+					String[] split = piece.split("-");
+					int count = Integer.parseInt(split[0]);
+					int val = parseValue(split[1]);
+					for (int j = 0; j < count && length < values.length; j++, length++) {
+						values[length] = val;
+					}
+					length--; // to account for extra increment
+				} else {
+					values[length] = parseValue(piece);
+				}
+			}
+			return Arrays.copyOf(values, length);
+		}
+	}
+	
+	@Override
+	public String toString(List<MemoryLine> lines) {
+		String values = lines.stream().map(MemoryLine::toString).collect(Collectors.joining(" "));
+		
+		// expensive I know, but whatever...
+		String[] split = values.split(" ");
+		StringBuilder builder = new StringBuilder();
+		for (int i = 0; i < split.length; ) {
+			int count = 1;
+			
+			while ((i + count) < split.length && split[i].equals(split[i + count])) {
+				count++;
+			}
+			
+			if (count == 1) {
+				builder.append(split[i]);
+			} else {
+				builder.append(count).append('-').append(split[i]);
+			}
+			
+			i += count;
+			
+			if (i < split.length) {
+				builder.append(' ');
+			}
+		}
+		
+		return builder.length() < values.length() ? builder.toString() : values;
+	}
+	
+	@Override
+	public Node createGui(Stage stage, List<MemoryLine> value, Consumer<List<MemoryLine>> onAction) {
+		return new Label("Right click component to edit contents.");
+	}
+	
+	private void copyMemoryValues(List<MemoryLine> dest, List<MemoryLine> src) {
+		for (int i = 0; i < src.size(); i++) {
+			MemoryLine srcLine = src.get(i);
+			MemoryLine tableLine = dest.get(i);
+			
+			for (int j = 0; j < srcLine.values.size() && j < tableLine.values.size(); j++) {
+				tableLine.values.get(j).set(srcLine.values.get(j).get());
+			}
+		}
+	}
+	
+	public void createAndShowMemoryWindow(Stage stage, List<MemoryLine> lines) {
+		Stage memoryStage = new Stage();
+		memoryStage.initOwner(stage);
+		memoryStage.setTitle("Modify memory");
+		
+		TableView<MemoryLine> tableView = new TableView<>();
+		tableView.getSelectionModel().setCellSelectionEnabled(true);
+		tableView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+		tableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_LAST_COLUMN);
+		tableView.setEditable(true);
+		
+		TableColumn<MemoryLine, String> address = new TableColumn<>("Address");
+		address.setStyle("-fx-alignment: CENTER-RIGHT; -fx-background-color: lightgray;");
+		address.setSortable(false);
+		address.setEditable(false);
+		address.setCellValueFactory(param -> new SimpleStringProperty(String.format("%0" + (1 + (addressBits - 1) / 4) + "x",
+		                                                                            param.getValue().address)));
+		tableView.getColumns().add(address);
+		
+		int columns = Math.min(1 << addressBits, 16);
+		for (int i = 0; i < columns; i++) {
+			int j = i;
+			
+			TableColumn<MemoryLine, String> column = new TableColumn<>(String.format("%x", i));
+			column.setStyle("-fx-alignment: CENTER;");
+			column.setSortable(false);
+			column.setEditable(true);
+			column.setCellValueFactory(param -> param.getValue().get(j));
+			column.setCellFactory(c -> new TableCell<>() {
+				private TextField textField;
+				private String oldText;
+				
+				@Override
+				public void startEdit() {
+					oldText = getText();
+					super.startEdit();
+					setText(null);
+					
+					textField = new TextField(oldText);
+					textField.addEventHandler(KeyEvent.KEY_PRESSED, event -> {
+						if (event.getCode() == KeyCode.ESCAPE) {
+							textField.setText(oldText);
+						}
+						if (event.getCode() == KeyCode.ENTER) {
+							cancelEdit();
+						}
+					});
+					textField.focusedProperty().addListener((observable, oldValue, newValue) -> {
+						if (!newValue) {
+							cancelEdit();
+						}
+					});
+					
+					setGraphic(textField);
+					textField.selectAll();
+					textField.requestFocus();
+				}
+				
+				@Override
+				protected void updateItem(String item, boolean empty) {
+					super.updateItem(item, empty);
+					
+					if (item == null) {
+						if (textField != null) {
+							updateText(textField.getText());
+						} else {
+							setText(null);
+						}
+					} else {
+						updateText(item);
+						if (textField != null) {
+							textField.setText(item);
+						}
+					}
+					
+					setGraphic(null);
+					tableView.requestFocus();
+				}
+				
+				@Override
+				public void cancelEdit() {
+					super.cancelEdit();
+					if (textField != null) {
+						updateText(textField.getText());
+						textField = null;
+						setGraphic(null);
+						tableView.requestFocus();
+					}
+				}
+				
+				private void updateText(String newText) {
+					String newValue;
+					try {
+						newValue = formatValue(parseValue(newText));
+					} catch (SimulationException exc) {
+						newValue = oldText;
+					}
+					
+					setText(newValue);
+					
+					if (getTableRow() != null) {
+						lines.get(getTableRow().getIndex()).values.get(j).set(newValue);
+					}
+				}
+			});
+			
+			tableView.getColumns().add(column);
+		}
+		
+		tableView.setItems(FXCollections.observableList(lines));
+		
+		Button loadButton = new Button("Load from file");
+		loadButton.setOnAction(event -> {
+			FileChooser fileChooser = new FileChooser();
+			fileChooser.setTitle("Choose save file");
+			fileChooser.setInitialDirectory(new File(System.getProperty("user.dir")));
+			File selectedFile = fileChooser.showOpenDialog(memoryStage);
+			if (selectedFile != null) {
+				try {
+					String contents = new String(Files.readAllBytes(selectedFile.toPath()));
+					copyMemoryValues(lines, parse(contents));
+				} catch (Exception exc) {
+					exc.printStackTrace();
+					new Alert(AlertType.ERROR, "Could not open file: " + exc.getMessage()).showAndWait();
+				}
+			}
+		});
+		Button saveButton = new Button("Save to file");
+		saveButton.setOnAction(event -> {
+			FileChooser fileChooser = new FileChooser();
+			fileChooser.setTitle("Choose save file");
+			fileChooser.setInitialFileName("Memory.dat");
+			File selectedFile = fileChooser.showSaveDialog(memoryStage);
+			if (selectedFile != null) {
+				List<String> strings = lines.stream().map(MemoryLine::toString).collect(Collectors.toList());
+				try {
+					Files.write(selectedFile.toPath(), strings);
+				} catch (Exception exc) {
+					exc.printStackTrace();
+					new Alert(AlertType.ERROR, "Could not open file: " + exc.getMessage()).showAndWait();
+				}
+			}
+		});
+		Button clearButton = new Button("Clear contents");
+		clearButton.setOnAction(event -> lines.forEach(line -> line.values.forEach(value -> value.set("0"))));
+		
+		memoryStage.addEventHandler(KeyEvent.KEY_PRESSED, keyEvent -> {
+			if (keyEvent.isShortcutDown()) {
+				if (keyEvent.getCode() == KeyCode.C) {
+					ClipboardContent content = new ClipboardContent();
+					
+					StringBuilder ramContent = new StringBuilder();
+					for (TablePosition<?, ?> selectedCell : tableView.getSelectionModel().getSelectedCells()) {
+						if (selectedCell.getColumn() > 0) {
+							ramContent
+								.append(lines.get(selectedCell.getRow()).values.get(selectedCell.getColumn() - 1).get())
+								.append(" ");
+						}
+					}
+					
+					content.putString(ramContent.toString());
+					Clipboard.getSystemClipboard().setContent(content);
+				} else if (keyEvent.getCode() == KeyCode.V) {
+					String clipboard = Clipboard.getSystemClipboard().getString();
+					if (clipboard != null) {
+						try {
+							// This is silly.
+							@SuppressWarnings("unchecked")
+							ObservableList<TablePosition<?, ?>> selectedCells =
+								(ObservableList<TablePosition<?, ?>>) 
+									(ObservableList<?>) tableView.getSelectionModel().getSelectedCells();
+							
+							int[] values = parsePartial(clipboard);
+							
+							if (selectedCells.size() <= 1) {
+								TablePosition<?, ?>
+									selectedCell =
+									selectedCells.isEmpty() ? null : selectedCells.get(0);
+								int row = selectedCell == null ? 0 : selectedCell.getRow();
+								int col = selectedCell == null ? 0 : selectedCell.getColumn() - 1;
+								
+								if (col >= 0) {
+									for (int value : values) {
+										lines.get(row).get(col).set(formatValue(value));
+										
+										if (++col == lines.get(0).values.size()) {
+											col = 0;
+											row++;
+											
+											if (row == lines.size()) {
+												break;
+											}
+										}
+									}
+								}
+							} else {
+								for (int i = 0; i < selectedCells.size() && i < values.length; i++) {
+									TablePosition<?, ?> selectedCell = selectedCells.get(i);
+									if (selectedCell.getColumn() > 0) {
+										lines.get(selectedCell.getRow()).values
+											.get(selectedCell.getColumn() - 1)
+											.set(formatValue(values[i]));
+									}
+								}
+							}
+						} catch (Exception exc) {
+							exc.printStackTrace();
+							new Alert(AlertType.ERROR, "Invalid clipboard data: " + exc.getMessage()).showAndWait();
+						}
+					}
+				}
+			} else if (keyEvent.getCode() == KeyCode.DELETE || keyEvent.getCode() == KeyCode.BACK_SPACE) {
+				for (TablePosition<?, ?> selectedCell : tableView.getSelectionModel().getSelectedCells()) {
+					if (selectedCell.getColumn() > 0) {
+						lines.get(selectedCell.getRow()).values.get(selectedCell.getColumn() - 1).set(formatValue(0));
+					}
+				}
+			} else if (tableView.getEditingCell() == null &&
+			           tableView.getSelectionModel().getSelectedCells().size() == 1 &&
+			           (keyEvent.getCode().isLetterKey() || keyEvent.getCode().isDigitKey())) {
+				@SuppressWarnings("unchecked")
+				TablePosition<MemoryLine, String> selectedCell = tableView.getFocusModel().getFocusedCell();
+				lines.get(selectedCell.getRow()).get(selectedCell.getColumn() - 1).set(keyEvent.getText());
+				tableView.edit(selectedCell.getRow(), selectedCell.getTableColumn());
+			}
+		});
+		
+		VBox.setVgrow(tableView, Priority.ALWAYS);
+		Platform.runLater(tableView::refresh);
+		
+		memoryStage.setScene(new Scene(new VBox(new HBox(loadButton, saveButton, clearButton), tableView)));
+		memoryStage.sizeToScene();
+		memoryStage.showAndWait();
+	}
+	
+	public static class MemoryLine {
+		public final int address;
+		public final List<StringProperty> values;
+		
+		public MemoryLine(int address) {
+			this.address = address;
+			values = new ArrayList<>(16);
+		}
+		
+		public StringProperty get(int index) {
+			if (index < values.size()) {
+				return values.get(index);
+			}
+			
+			return new SimpleStringProperty("");
+		}
+		
+		@Override
+		public String toString() {
+			return values.stream().map(StringProperty::get).collect(Collectors.joining(" "));
+		}
+	}
 }

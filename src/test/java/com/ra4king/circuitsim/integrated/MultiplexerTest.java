@@ -5,10 +5,10 @@ import org.junit.jupiter.api.Test;
 import com.ra4king.circuitsim.simulator.Circuit;
 import com.ra4king.circuitsim.simulator.Simulator;
 import com.ra4king.circuitsim.simulator.WireValue;
-import com.ra4king.circuitsim.simulator.components.gates.Gate.AndGate;
-import com.ra4king.circuitsim.simulator.components.gates.Gate.NotGate;
-import com.ra4king.circuitsim.simulator.components.gates.Gate.OrGate;
-import com.ra4king.circuitsim.simulator.components.gates.Gate.XorGate;
+import com.ra4king.circuitsim.simulator.components.gates.AndGate;
+import com.ra4king.circuitsim.simulator.components.gates.NotGate;
+import com.ra4king.circuitsim.simulator.components.gates.OrGate;
+import com.ra4king.circuitsim.simulator.components.gates.XorGate;
 import com.ra4king.circuitsim.simulator.components.plexers.Multiplexer;
 import com.ra4king.circuitsim.simulator.components.wiring.Pin;
 
@@ -32,12 +32,12 @@ public class MultiplexerTest {
 		Pin sel = circuit.addComponent(new Pin("Sel", 2, true));
 		Pin out = circuit.addComponent(new Pin("Out", 4, false));
 		
-		in1.getPort(Pin.Ports.PORT)
+		in1.getPort(Pin.PORT)
 		   .linkPort(andGate.getPort(0))
 		   .linkPort(orGate.getPort(0))
 		   .linkPort(xorGate.getPort(0))
 		   .linkPort(notGate.getOutPort());
-		in2.getPort(Pin.Ports.PORT)
+		in2.getPort(Pin.PORT)
 		   .linkPort(andGate.getPort(1))
 		   .linkPort(orGate.getPort(1))
 		   .linkPort(xorGate.getPort(1));
@@ -47,8 +47,8 @@ public class MultiplexerTest {
 		xorGate.getOutPort().linkPort(mux.getPort(2));
 		notGate.getOutPort().linkPort(mux.getPort(3));
 		
-		sel.getPort(Pin.Ports.PORT).linkPort(mux.getSelectorPort());
-		out.getPort(Pin.Ports.PORT).linkPort(mux.getOutPort());
+		sel.getPort(Pin.PORT).linkPort(mux.getSelectorPort());
+		out.getPort(Pin.PORT).linkPort(mux.getOutPort());
 		
 		in1.setValue(circuit.getTopLevelState(), WireValue.of(5, 4));
 		in2.setValue(circuit.getTopLevelState(), WireValue.of(3, 4));

@@ -1,6 +1,5 @@
 package com.ra4king.circuitsim.integrated;
 
-import kotlin.Unit;
 import org.junit.jupiter.api.Test;
 
 import com.ra4king.circuitsim.simulator.Circuit;
@@ -27,11 +26,11 @@ public class ClockTest {
 		Pin cin = circuit.addComponent(new Pin("Cin", 1, true));
 		Pin out = circuit.addComponent(new Pin("Out", 32, false));
 		
-		register.getPort(Register.Ports.PORT_IN).linkPort(adder.getPort(Adder.Ports.PORT_OUT));
-		register.getPort(Register.Ports.PORT_CLK).linkPort(clock.getPort(Clock.PORT));
-		adder.getPort(Adder.Ports.PORT_A).linkPort(register.getPort(Register.Ports.PORT_OUT)).linkPort(out.getPort(Pin.Ports.PORT));
-		adder.getPort(Adder.Ports.PORT_B).linkPort(din.getPort(Pin.Ports.PORT));
-		adder.getPort(Adder.Ports.PORT_CARRY_IN).linkPort(cin.getPort(Pin.Ports.PORT));
+		register.getPort(Register.PORT_IN).linkPort(adder.getPort(Adder.PORT_OUT));
+		register.getPort(Register.PORT_CLK).linkPort(clock.getPort(Clock.PORT));
+		adder.getPort(Adder.PORT_A).linkPort(register.getPort(Register.PORT_OUT)).linkPort(out.getPort(Pin.PORT));
+		adder.getPort(Adder.PORT_B).linkPort(din.getPort(Pin.PORT));
+		adder.getPort(Adder.PORT_CARRY_IN).linkPort(cin.getPort(Pin.PORT));
 		
 		out.addChangeListener(circuit.getTopLevelState(), (pin, state, value) -> {
 			int v = value.getValue();
@@ -45,10 +44,7 @@ public class ClockTest {
 		cin.setValue(circuit.getTopLevelState(), WireValue.of(0, 1));
 		simulator.stepAll();
 		
-		Clock.addChangeListener(simulator, value -> {
-			simulator.stepAll();
-            return Unit.INSTANCE;
-        });
+		Clock.addChangeListener(simulator, value -> simulator.stepAll());
 		Clock.startClock(simulator, 1000000);
 	}
 }
