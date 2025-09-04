@@ -702,11 +702,7 @@ public class CircuitSim extends Application {
 				
 				GridPane.setHgrow(name, Priority.ALWAYS);
 				name.setMaxWidth(Double.MAX_VALUE);
-				name.setMinHeight(30);
-				name.setBackground(new Background(new BackgroundFill((size / 2) % 2 == 0 ? Color.LIGHTGRAY :
-				                                                     Color.WHITE,
-				                                                     null,
-				                                                     null)));
+				name.getStyleClass().add("props-menu-label");
 				
 				Node node = property.validator.createGui(stage, property.value, newValue -> Platform.runLater(() -> {
 					Properties newProperties = new Properties(properties);
@@ -717,10 +713,7 @@ public class CircuitSim extends Application {
 				if (node != null) {
 					StackPane valuePane = new StackPane(node);
 					StackPane.setAlignment(node, Pos.CENTER_LEFT);
-					valuePane.setBackground(new Background(new BackgroundFill((size / 2) % 2 == 0 ? Color.LIGHTGRAY :
-					                                                          Color.WHITE,
-					                                                          null,
-					                                                          null)));
+					valuePane.getStyleClass().add("props-menu-value");
 					GridPane.setHgrow(valuePane, Priority.ALWAYS);
 					GridPane.setVgrow(valuePane, Priority.ALWAYS);
 					propertiesTable.addRow(size, name, valuePane);
@@ -2634,9 +2627,11 @@ public class CircuitSim extends Application {
 			new MenuBar(fileMenu, editMenu, viewMenu, circuitsMenu, simulationMenu, helpMenu);
 		menuBar.setUseSystemMenuBar(true);
 		
+		propertiesTable.getStyleClass().add("props-table");
 		ScrollPane propertiesScrollPane = new ScrollPane(propertiesTable);
 		propertiesScrollPane.setFitToWidth(true);
 		
+		propertiesScrollPane.getStyleClass().add("props-menu");
 		VBox propertiesBox = new VBox(componentLabel, propertiesScrollPane);
 		propertiesBox.setAlignment(Pos.TOP_CENTER);
 		VBox.setVgrow(propertiesScrollPane, Priority.ALWAYS);
