@@ -8,9 +8,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.math.RoundingMode;
 import java.nio.file.Files;
-import java.text.DecimalFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -69,15 +67,16 @@ import javafx.embed.swing.SwingFXUtils;
 import javafx.event.Event;
 import javafx.event.EventHandler;
 import javafx.geometry.Bounds;
+import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
-import javafx.geometry.Side;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.control.Accordion;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.ButtonBar.ButtonData;
@@ -96,15 +95,15 @@ import javafx.scene.control.RadioMenuItem;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
 import javafx.scene.control.SeparatorMenuItem;
+import javafx.scene.control.Slider;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TabPane.TabClosingPolicy;
 import javafx.scene.control.TabPane.TabDragPolicy;
 import javafx.scene.control.TextArea;
-import javafx.scene.control.TextField;
-import javafx.scene.control.TextFormatter;
 import javafx.scene.control.TextInputDialog;
+import javafx.scene.control.TitledPane;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.ToolBar;
@@ -121,12 +120,12 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
 import javafx.scene.input.ZoomEvent;
-import javafx.scene.layout.Background;
-import javafx.scene.layout.BackgroundFill;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
@@ -140,7 +139,6 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import javafx.util.Pair;
-import javafx.util.StringConverter;
 
 /**
  * @author Roi Atalla
@@ -180,12 +178,15 @@ public class CircuitSim extends Application {
 	private ComponentManager componentManager;
 	private Set<String> libraryPaths;
 	
-	private TabPane buttonTabPane;
+	/**
+	 * The panel on the left, which has all of the components in accordion sections.
+	 */
+	private Accordion componentDrawer;
 	private ToggleGroup buttonsToggleGroup;
 	private Runnable refreshComponentsTabs;
 	
 	private ComboBox<Integer> bitSizeSelect;
-	private TextField scaleFactorInput;
+	private Slider scaleFactorSlider;
 	private Label fpsLabel;
 	private Label clockLabel;
 	private Label messageLabel;
@@ -193,7 +194,10 @@ public class CircuitSim extends Application {
 	private GridPane propertiesTable;
 	private Label componentLabel;
 	
-	private Tab circuitButtonsTab;
+	/**
+	 * Circuit section of the component accordion.
+	 */
+	private TitledPane circuitButtonsSection;
 	private Canvas circuitCanvas;
 	private ScrollPane canvasScrollPane;
 	private TabPane canvasTabPane;
@@ -366,26 +370,22 @@ public class CircuitSim extends Application {
 		return clickMode.isSelected();
 	}
 	
+	private static final double SCALE_MIN = 0.25;
+	private static final double SCALE_MAX = 4.0;
 	/**
 	 * Clamps the scale factor to between the minimum and maximum ranges.
 	 */
 	public static double clampScaleFactor(double scale) {
 		if (Double.isNaN(scale)) return 1.0;
-		final double SCALE_MIN = 0.25;
-		final double SCALE_MAX = 8;
 		return Math.min(Math.max(scale, SCALE_MIN), SCALE_MAX);
 	}
 
 	public double getScaleFactor() {
-		@SuppressWarnings("unchecked")
-		TextFormatter<Double> formatter = (TextFormatter<Double>) scaleFactorInput.getTextFormatter();
-		return formatter.getValue();
+		return scaleFactorSlider.getValue();
 	}
 	
 	public void setScaleFactor(double scale) {
-		@SuppressWarnings("unchecked")
-		TextFormatter<Double> formatter = (TextFormatter<Double>) scaleFactorInput.getTextFormatter();
-		formatter.setValue(CircuitSim.clampScaleFactor(scale));
+		scaleFactorSlider.setValue(CircuitSim.clampScaleFactor(scale));
 	}
 
 	public double getScaleFactorInverted() {
@@ -702,11 +702,7 @@ public class CircuitSim extends Application {
 				
 				GridPane.setHgrow(name, Priority.ALWAYS);
 				name.setMaxWidth(Double.MAX_VALUE);
-				name.setMinHeight(30);
-				name.setBackground(new Background(new BackgroundFill((size / 2) % 2 == 0 ? Color.LIGHTGRAY :
-				                                                     Color.WHITE,
-				                                                     null,
-				                                                     null)));
+				name.getStyleClass().add("props-menu-label");
 				
 				Node node = property.validator.createGui(stage, property.value, newValue -> Platform.runLater(() -> {
 					Properties newProperties = new Properties(properties);
@@ -717,10 +713,7 @@ public class CircuitSim extends Application {
 				if (node != null) {
 					StackPane valuePane = new StackPane(node);
 					StackPane.setAlignment(node, Pos.CENTER_LEFT);
-					valuePane.setBackground(new Background(new BackgroundFill((size / 2) % 2 == 0 ? Color.LIGHTGRAY :
-					                                                          Color.WHITE,
-					                                                          null,
-					                                                          null)));
+					valuePane.getStyleClass().add("props-menu-value");
 					GridPane.setHgrow(valuePane, Priority.ALWAYS);
 					GridPane.setVgrow(valuePane, Priority.ALWAYS);
 					propertiesTable.addRow(size, name, valuePane);
@@ -788,34 +781,49 @@ public class CircuitSim extends Application {
 				modifiedSelection(null);
 			}
 		});
+		button.getStyleClass().add("new-component-btn");
 		GridPane.setHgrow(button, Priority.ALWAYS);
 		return button;
 	}
 	
+	/**
+	 * @return a titled pane, used for the component drawer
+	 */
+	private static TitledPane makeDrawerPane(String title) {
+		FlowPane flowPane = new FlowPane(Orientation.HORIZONTAL);
+		flowPane.setHgap(10.0);
+		flowPane.setVgap(10.0);
+		flowPane.setPrefHeight(Region.USE_COMPUTED_SIZE);
+		flowPane.setMinHeight(Region.USE_COMPUTED_SIZE);
+		flowPane.setMaxHeight(Region.USE_COMPUTED_SIZE);
+
+		VBox pane = new VBox(flowPane);
+		pane.prefHeightProperty().bind(flowPane.heightProperty());
+
+		TitledPane s = new TitledPane(title, pane);
+		s.getStyleClass().add("new-component-section");
+		return s;
+	}
+	private static FlowPane getDrawerPaneBody(TitledPane section) {
+		return (FlowPane) (((VBox) section.getContent()).getChildren().get(0));
+	}
+
 	void refreshCircuitsTab() {
 		if (loadingFile) {
 			return;
 		}
 		
 		Platform.runLater(() -> {
-			ScrollPane pane = new ScrollPane(new GridPane());
-			pane.setFitToWidth(true);
-			
-			if (circuitButtonsTab == null) {
-				circuitButtonsTab = new Tab("Circuits");
-				circuitButtonsTab.setClosable(false);
-				circuitButtonsTab.setContent(pane);
-				buttonTabPane.getTabs().add(circuitButtonsTab);
+			if (circuitButtonsSection == null) {
+				circuitButtonsSection = makeDrawerPane("Circuits");
+				componentDrawer.getPanes().add(circuitButtonsSection);
 			} else {
 				// Clear toggle groups, as they take up memory and don't get cleared automatically
-				GridPane buttons = (GridPane)((ScrollPane)circuitButtonsTab.getContent()).getContent();
-				buttons.getChildren().forEach(node -> {
-					ToggleButton button = (ToggleButton)node;
-					button.setToggleGroup(null);
-				});
-				buttons.getChildren().clear();
-				
-				circuitButtonsTab.setContent(pane);
+				var children = getDrawerPaneBody(circuitButtonsSection).getChildren();
+				for (Node n : children) {
+					((ToggleButton) n).setToggleGroup(null);
+				}
+				children.clear();
 			}
 			
 			// when requesting a tab to be closed, it still exists and thus its button could be created twice.
@@ -851,8 +859,7 @@ public class CircuitSim extends Application {
 				});
 				GridPane.setHgrow(toggleButton, Priority.ALWAYS);
 				
-				GridPane buttons = (GridPane)pane.getContent();
-				buttons.addRow(buttons.getChildren().size(), toggleButton);
+				getDrawerPaneBody(circuitButtonsSection).getChildren().add(toggleButton);
 			});
 		});
 	}
@@ -1905,6 +1912,11 @@ public class CircuitSim extends Application {
 			circuitManagers.put(canvasTab.getText(), new Pair<>(createSubcircuitLauncherInfo(revisedName), circuitManager));
 			canvasTabPane.getTabs().add(canvasTab);
 			
+			// Update tab status when top level status changes
+			circuitManager.getCircuitBoard().onTopLevelChange(tl -> {
+				canvasTab.getStyleClass().removeAll("top-level-indicator", "nested-state-indicator");
+				canvasTab.getStyleClass().add(tl ? "top-level-indicator" : "nested-state-indicator");
+			});
 			refreshCircuitsTab();
 			
 			editHistory.addAction(EditAction.CREATE_CIRCUIT,
@@ -1989,39 +2001,13 @@ public class CircuitSim extends Application {
 			.selectedItemProperty()
 			.addListener((observable, oldValue, newValue) -> modifiedSelection(selectedComponent));
 		
-		scaleFactorInput = new TextField();
-		scaleFactorInput.setMaxWidth(80);
-		scaleFactorInput.setPrefWidth(80);
-		scaleFactorInput.setTextFormatter(new TextFormatter<>(
-			new StringConverter<>() {
-				@Override
-				public String toString(Double value) {
-					// Round to 2 decimal places.
-					if (value == null) return "";
-					DecimalFormat df = new DecimalFormat("0.0#");
-					df.setRoundingMode(RoundingMode.HALF_UP);
-					return value != null ? df.format(value) : "";
-				}
-
-				@Override
-				public Double fromString(String value) {
-					if (value != null && !value.isBlank()) {
-						return CircuitSim.clampScaleFactor(Double.valueOf(value));
-					}
-
-					return 1.0;
-				}
-
-			},
-			1.0, 
-			change -> change.getControlNewText().matches("\\d*(?:\\.\\d*)?") ? change : null
-		));
-		scaleFactorInput.getTextFormatter().valueProperty().addListener((observable, oldValue, newValue) -> {
-			needsRepaint = true;
-		});
+		scaleFactorSlider = new Slider(SCALE_MIN, SCALE_MAX, 1.0);
+		scaleFactorSlider.setShowTickLabels(false);
+		scaleFactorSlider.setShowTickMarks(false);
+		scaleFactorSlider.setMaxWidth(120);
+		scaleFactorSlider.valueProperty().addListener((observable, oldVal, newVal) -> needsRepaint = true);
 		
-		buttonTabPane = new TabPane();
-		buttonTabPane.setSide(Side.TOP);
+		componentDrawer = new Accordion();
 		
 		propertiesTable = new GridPane();
 		
@@ -2104,39 +2090,28 @@ public class CircuitSim extends Application {
 		});
 		
 		buttonsToggleGroup = new ToggleGroup();
-		Map<String, Tab> buttonTabs = new HashMap<>();
+		Map<String, TitledPane> componentSections = new HashMap<>();
 		
 		refreshComponentsTabs = () -> {
-			buttonTabPane.getTabs().clear();
-			buttonTabs.clear();
+			componentSections.clear();
 			
 			componentManager.forEach(componentInfo -> {
 				if (!componentInfo.showInComponentsList) {
 					return;
 				}
 				
-				Tab tab;
-				if (buttonTabs.containsKey(componentInfo.name.getKey())) {
-					tab = buttonTabs.get(componentInfo.name.getKey());
-				} else {
-					tab = new Tab(componentInfo.name.getKey());
-					tab.setClosable(false);
-					
-					ScrollPane pane = new ScrollPane(new GridPane());
-					pane.setFitToWidth(true);
-					
-					tab.setContent(pane);
-					buttonTabPane.getTabs().add(tab);
-					buttonTabs.put(componentInfo.name.getKey(), tab);
-				}
-				
-				GridPane buttons = (GridPane)((ScrollPane)tab.getContent()).getContent();
-				
+				TitledPane section = componentSections.computeIfAbsent(componentInfo.name.getKey(), k -> {
+					var pane = makeDrawerPane(k);
+					componentDrawer.getPanes().add(pane);
+					return pane;
+				});
 				ToggleButton toggleButton = setupButton(buttonsToggleGroup, componentInfo);
-				buttons.addRow(buttons.getChildren().size(), toggleButton);
+				VBox.setMargin(toggleButton, new Insets(20.0, 10.0, 20.0, 10.0));
+				getDrawerPaneBody(section).getChildren().add(toggleButton);
 			});
 			
-			circuitButtonsTab = null;
+			componentDrawer.getStyleClass().add("button-tab-pane");
+			circuitButtonsSection = null;
 			refreshCircuitsTab();
 		};
 		
@@ -2629,19 +2604,25 @@ public class CircuitSim extends Application {
 			new MenuBar(fileMenu, editMenu, viewMenu, circuitsMenu, simulationMenu, helpMenu);
 		menuBar.setUseSystemMenuBar(true);
 		
+		propertiesTable.getStyleClass().add("props-table");
 		ScrollPane propertiesScrollPane = new ScrollPane(propertiesTable);
 		propertiesScrollPane.setFitToWidth(true);
 		
+		propertiesScrollPane.getStyleClass().add("props-menu");
 		VBox propertiesBox = new VBox(componentLabel, propertiesScrollPane);
 		propertiesBox.setAlignment(Pos.TOP_CENTER);
 		VBox.setVgrow(propertiesScrollPane, Priority.ALWAYS);
 		
-		SplitPane leftPaneSplit = new SplitPane(buttonTabPane, propertiesBox);
+		ScrollPane componentDrawerPane = new ScrollPane(componentDrawer);
+        componentDrawerPane.setFitToWidth(true);
+        componentDrawer.setMaxWidth(Double.MAX_VALUE);
+
+		SplitPane leftPaneSplit = new SplitPane(componentDrawerPane, propertiesBox);
 		leftPaneSplit.setOrientation(Orientation.VERTICAL);
 		leftPaneSplit.setPrefWidth(500);
 		leftPaneSplit.setMinWidth(150);
 		
-		SplitPane.setResizableWithParent(buttonTabPane, Boolean.FALSE);
+		SplitPane.setResizableWithParent(componentDrawer, Boolean.FALSE);
 		
 		fpsLabel = new Label();
 		fpsLabel.setMinWidth(100);
@@ -2678,6 +2659,8 @@ public class CircuitSim extends Application {
 		Function<Pair<String, String>, ToggleButton> createToolbarButton = pair -> {
 			ComponentLauncherInfo info = componentManager.get(pair);
 			ToggleButton button = new ToggleButton("", setupImageView(info.image));
+			VBox.setMargin(button, new Insets(8.0));
+            button.getStyleClass().add("toolbar-button");
 			button.setTooltip(new Tooltip(pair.getValue()));
 			button.setMinWidth(50);
 			button.setMinHeight(50);
@@ -2707,7 +2690,23 @@ public class CircuitSim extends Application {
 		clickMode
 			.selectedProperty()
 			.addListener((observable, oldValue, newValue) -> scene.setCursor(newValue ? Cursor.HAND : Cursor.DEFAULT));
-		
+
+
+		// Global bitsize box
+		Label bitSizeLabel = new Label("Global bit size:");
+		bitSizeLabel.getStyleClass().add("bit-size-label");
+		bitSizeSelect.getStyleClass().add("bit-size-dropdown");
+		HBox bitSizeBox = new HBox(bitSizeLabel, bitSizeSelect);
+		bitSizeBox.getStyleClass().add("bit-size-box");
+		bitSizeBox.setOnMouseClicked(e -> bitSizeSelect.show());
+		// no :has() D:
+		bitSizeSelect.setOnShowing(e -> {
+			bitSizeBox.getStyleClass().add("showing-dropdown");
+		});
+		bitSizeSelect.setOnHidden(e -> {
+			bitSizeBox.getStyleClass().remove("showing-dropdown");
+		});
+
 		Pane blank = new Pane();
 		HBox.setHgrow(blank, Priority.ALWAYS);
 		
@@ -2722,16 +2721,17 @@ public class CircuitSim extends Application {
 		                          tunnelButton,
 		                          textButton,
 		                          new Separator(Orientation.VERTICAL),
-		                          new Label("Global bit size:"),
-		                          bitSizeSelect,
+		                          bitSizeBox,
 		                          blank,
 		                          new Label("Scale:"),
-		                          scaleFactorInput);
+		                          scaleFactorSlider);
 		
 		VBox.setVgrow(canvasPropsSplit, Priority.ALWAYS);
 		scene = new Scene(new VBox(menuBar, toolBar, canvasPropsSplit));
 		scene.setCursor(Cursor.DEFAULT);
 		
+		scene.getStylesheets().add(getClass().getResource("/styles/style.css").toExternalForm());
+
 		updateTitle();
 		stage.setScene(scene);
 		stage.sizeToScene();
