@@ -15,7 +15,7 @@ ext.moduleName = 'Project.com.ra4king.circuitsim.gui'
 
 java {
 	toolchain {
-		languageVersion.set(JavaLanguageVersion.of(17))
+		// languageVersion.set(JavaLanguageVersion.of(17))
 	}
 }
 

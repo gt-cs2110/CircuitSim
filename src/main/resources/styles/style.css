@@ -1,0 +1,462 @@
+/* style.css */
+.root {
+    /* App background color - TEST: Making this bright red to verify CSS is loading */
+    -fx-background-color: #ff0000;
+
+    /* The background color of a pressable button. */
+    -csim-btn-color: -csim-btn-color-base;
+    /* The text color of a pressable button. */
+    -csim-btn-text-color: white;
+    /* Button color palette */
+    -csim-btn-color-base: #00692c;
+    -csim-btn-color-hover: derive(-csim-btn-color-base, 25%);
+    -csim-btn-color-pressed: derive(-csim-btn-color-base, 50%);
+
+    /* The background color of a toggleable button. */
+    -csim-toggle-btn-color: -csim-toggle-btn-color-base;
+    /* The text color of a toggleable button. */
+    -csim-toggle-btn-text-color: ladder(-csim-toggle-btn-color, white 49%, black 50%);
+    -csim-toggle-btn-border-color: derive(-csim-toggle-btn-color, -25%);
+    /* Toggle button color palette */
+    -csim-toggle-btn-color-base: #DDDDDD;
+    -csim-toggle-btn-color-hover: derive(-csim-toggle-btn-color-base, 33%);
+    -csim-toggle-btn-color-pressed: #adadad;
+    -csim-toggle-btn-color-pressed-hover: derive(-csim-toggle-btn-color-pressed, 33%);
+
+    /* The background color of a dropdown list item. */
+    -csim-dropdown-btn-color: -csim-dropdown-btn-color-base;
+    /* The text color of a dropdown list item. */
+    -csim-dropdown-btn-text-color: ladder(-csim-dropdown-btn-color, white 49%, black 50%);
+     /* Dropdown list item palette  */
+    -csim-dropdown-btn-color-base: #EEEEEE;
+    -csim-dropdown-btn-color-hover: derive(-csim-dropdown-btn-color-base, -15%);
+    -csim-dropdown-btn-color-pressed: #00692c;
+    -csim-dropdown-btn-color-pressed-hover: derive(-csim-dropdown-btn-color-pressed, -10%);
+    -csim-dropdown-btn-color-border: #BBBBBB;
+
+    /* The background color of a tab button */
+    -csim-tab-btn-pane-color-base: #f8f9fa;
+
+    /* New component palette */
+    -csim-component-text-color: #343a40;
+    -csim-component-text-base: #EEE;
+    -csim-component-expanded-base: #F4F4F4;
+    -csim-component-arrow-base: #6c757d;
+
+    /* Text Field palette */
+    -csim-text-field-color: #333333;
+    -csim-text-field-prompt-color: #888888;
+
+    /* Tab Pane palette */
+    -csim-tab-pane-color-base: #f9f9f9;
+    -csim-tab-pane-color-border: #cccccc;
+    -csim-tab-pane-color-hover: #d8d8d8;
+    -csim-tab-pane-color-selected: #dddddd;
+    -csim-tab-header-color-base: #eaeaea;
+    -csim-tab-text-color: #333333;
+    -csim-tab-text-color-selected: black;
+
+    /* Bitsize Content palette */
+    -csim-bit-size-color-base: #DDDDDD;
+    -csim-bit-size-color-border: #BBBBBB;
+
+    /* Slider thumb palette */
+    -csim-thumb-base:    -csim-bit-size-color-base;
+    -csim-thumb-border:  -csim-bit-size-color-border;
+    -csim-thumb-hover:   derive(-csim-thumb-base, 25%);
+    -csim-thumb-pressed: derive(-csim-thumb-base, 50%);
+
+    /* Level Indicator palette */
+    -csim-level-border-base: #aaaaaa;
+    -csim-top-level-border-indicator: #07c;
+    -csim-nested-level-border-indicator: #c22;
+
+    /* Tilted Pane palette */
+    -csim-tilted-pane-base: #f2f2f2;
+    -csim-tilted-pane-open-base: #f9fafb;
+    -csim-tilted-pane-hover: #dddddd;
+    -csim-tilted-pane-title-base: white;
+    -csim-tilted-pane-title-border: #dddddd;
+
+    /* Color Picker Palette */
+    -csim-color-picker-base: #aee;
+    -csim-color-picker-border: #8cc;
+
+    /* The text color of input during edit */
+    -csim-edit-text-color: -csim-top-level-border-indicator;
+}
+
+/* Buttons */
+.button {
+    -fx-background-color: -csim-btn-color;
+    -fx-text-fill: -csim-btn-text-color;
+    -fx-background-radius: 8;
+    -fx-font-size: 14px;
+}
+.button:hover {
+    -csim-btn-color: -csim-btn-color-hover;
+}
+.button:armed {
+    -csim-btn-color: -csim-btn-color-pressed;
+}
+
+.toggle-button {
+    -fx-background-color: -csim-toggle-btn-border-color, -csim-toggle-btn-color;
+    -fx-background-insets: 0, 1;
+    -fx-text-fill: -csim-toggle-btn-text-color;
+}
+.toggle-button:hover {
+    -csim-toggle-btn-color: -csim-toggle-btn-color-hover;
+}
+.toggle-button:selected {
+    -csim-toggle-btn-color: -csim-toggle-btn-color-pressed;
+}
+.toggle-button:hover:selected {
+    -csim-toggle-btn-color: -csim-toggle-btn-color-pressed-hover;
+}
+
+/* Button for creating new components */
+.new-component-btn {
+    -fx-min-height: 48px;
+    -fx-max-width: 200px;
+    -fx-padding: 8 8 8 8;
+    -fx-background-radius: 8;
+}
+
+/* Properties panel */
+
+/* Properties panel: Content background */
+.props-table {
+    -fx-background-color: white;
+}
+
+/* Properties panel: Label column */
+.props-menu-label {
+    -fx-background-color: transparent;
+    -fx-text-fill: black;
+    -fx-min-width: 128;
+    -fx-padding: 8 8 8 16;
+}
+
+/* Properties panel: Value column */
+.props-menu-value {
+    -fx-background-color: transparent;
+    -fx-text-fill: black;
+    -fx-min-width: 250;
+    -fx-padding: 8 8 8 0;
+}
+
+/* Property list buttons */
+.property-list-validator-button {
+    -fx-background-color: -csim-dropdown-btn-color;
+    -fx-text-fill: -csim-dropdown-btn-text-color;
+    -fx-min-width: 36px;
+}
+.property-list-validator-button:hover {
+    -csim-dropdown-btn-color: -csim-dropdown-btn-color-hover;
+}
+.property-list-validator-button:selected {
+    -csim-dropdown-btn-color: -csim-dropdown-btn-color-pressed;
+}
+.property-list-validator-button:hover:selected {
+    -csim-dropdown-btn-color: -csim-dropdown-btn-color-pressed-hover;
+}
+
+.property-list-validator-dropdown {
+    -fx-background-color: -csim-dropdown-btn-color;
+    -fx-background-radius: 8 8 8 8;
+    -fx-border-width: 1 1 1 1;
+    -fx-border-color: -csim-dropdown-btn-color-border;
+    -fx-border-radius: 8 8 8 8;
+}
+
+.button-top-left {
+    -fx-background-radius: 8 0 0 0;
+}
+
+.button-top-right {
+    -fx-background-radius: 0 8 0 0;
+}
+
+.button-bottom-left {
+    -fx-background-radius: 0 0 0 8;
+}
+
+.button-bottom-right {
+    -fx-background-radius: 0 0 8 0;
+}
+
+.button-left {
+    -fx-background-radius: 8 0 0 8;
+}
+
+.button-right {
+    -fx-background-radius: 0 8 8 0;
+}
+
+.button-tab-pane {
+    -fx-background-color: -csim-tab-btn-pane-color-base;
+    -fx-border-color: transparent;
+    -fx-padding: 10;
+}
+
+.new-component-section {
+    -fx-background-color: white;
+    -fx-effect: dropshadow(one-pass-box, rgba(0,0,0,0.05), 6, 0, 0, 2);
+    -fx-padding: 8;
+    -fx-spacing: 4;
+    -fx-transition: all 0.2s ease-in-out;
+
+}
+
+.new-component-section > .title {
+    -fx-background-color: white;
+    -fx-text-fill: -csim-component-text-color;
+    -fx-font-size: 15px;
+    -fx-font-weight: 600;
+    -fx-padding: 10 14;
+}
+
+.new-component-section:expanded > .title {
+    -fx-background-color: -csim-component-expanded-base;
+}
+
+.new-component-section > *.content {
+    -fx-padding: 4 4 0 4;
+    -fx-background-color: -csim-component-expanded-base;
+    -fx-border-color: -csim-component-expanded-base;
+}
+
+.new-component-section > .content {
+    -fx-transition: all 0.3s ease;
+}
+
+.new-component-section > .title > .arrow-button {
+    -fx-background-color: transparent;
+}
+
+.new-component-section > .title > .arrow-button > .arrow {
+    -fx-shape: "M 0 0 L 6 6 L 12 0 Z";
+    -fx-background-color: -csim-component-arrow-base;
+    -fx-focus-color: transparent;
+    -fx-scale-x: 0.8;
+    -fx-scale-y: 0.8;
+}
+
+.text-field {
+    -fx-background-color: -csim-component-text-base;
+    -fx-background-radius: 8;
+    -fx-border-color: transparent;
+    -fx-border-radius: 8;
+    -fx-border-width: 2;
+    -fx-padding: 8 12;
+    -fx-font-size: 14px;
+    -fx-text-fill: -csim-text-field-color;
+    -fx-prompt-text-fill: -csim-text-field-prompt-color;
+    -fx-focus-color: transparent;
+    -fx-faint-focus-color: transparent;
+    -fx-effect: dropshadow(one-pass-box, rgba(0,0,0,0.05), 2, 0, 0, 1);
+    -fx-transition: all 0.3s ease-in-out;
+    -fx-max-width: 224px;
+}
+
+.text-field:focused {
+    -fx-border-color: -csim-edit-text-color;
+}
+
+.global-bit-size {
+    -fx-text-alignment: center;
+    -fx-text-fill: red;
+}
+
+.scale-factor {
+
+}
+
+.toolbar-button {
+    -fx-padding: 4;
+}
+
+/* Style the entire TabPane */
+.tab-pane {
+    -fx-background-color: -csim-tab-pane-color-base;
+    -fx-border-color: -csim-tab-pane-color-border;
+    -fx-border-width: 1;
+    -fx-tab-min-width: 64px;
+}
+
+/* Tab header area */
+.tab-pane > .tab-header-area {
+    -fx-background-color: -csim-tab-header-color-base;
+    -fx-padding: 8px 8px 0 8px;
+    -fx-border-color: -csim-tab-pane-color-border;
+    -fx-border-width: 0 0 1 0;
+}
+
+/* Individual tabs */
+.tab-pane .tab {
+    -fx-background-insets: 0;
+    -fx-padding: 8 16 8 16;
+    -fx-background-color: -csim-tab-pane-color-border;
+    -fx-text-fill: -csim-tab-text-color;
+    -fx-font-size: 14px;
+}
+
+/* Hovered tab */
+.tab-pane .tab:hover {
+    -fx-background-color: -csim-tab-pane-color-hover;
+}
+
+/* Selected tab */
+.tab-pane .tab:selected {
+    -fx-background-color: -csim-tab-pane-color-selected;
+    -fx-text-fill: black;
+    -fx-border-width: 1 1 5 1;
+    -fx-focus-color: transparent;
+    -fx-faint-focus-color: transparent;
+}
+
+.top-level-indicator {
+    -fx-border-color:
+        -csim-level-border-base
+        -csim-level-border-base
+        -csim-top-level-border-indicator
+        -csim-level-border-base;
+}
+
+.nested-state-indicator {
+    -fx-border-color:
+        -csim-level-border-base
+        -csim-level-border-base
+        -csim-nested-level-border-indicator
+        -csim-level-border-base;
+}
+
+/* Content area */
+.tab-pane .tab-content-area {
+}
+
+.tab-pane .tab {
+    -fx-background-radius: 8 8 0 0;
+    -fx-border-radius: 8 8 0 0;
+}
+.tab-pane .tab:selected {
+}
+
+.bit-size-label {
+    -fx-background-color: transparent;
+    -fx-background-radius: 0;
+    -fx-border-color: transparent;
+    -fx-border-radius: 0;
+    -fx-padding: 4;
+}
+
+.bit-size-dropdown {
+    -fx-background-color: transparent;
+    -fx-background-radius: 0;
+    -fx-border-width: 0;
+    -fx-border-color: transparent;
+    -fx-border-radius: 0;
+    -fx-padding: 4;
+}
+
+.bit-size-box {
+    -fx-alignment: center;
+    -fx-background-color: -csim-bit-size-color-base;
+    -fx-background-radius: 8;
+    -fx-border-width: 1;
+    -fx-border-color: -csim-bit-size-color-border;
+    -fx-border-radius: 8;
+    -fx-pref-height: 25;
+    -fx-max-height: 25;
+}
+
+.bit-size-box:hover {
+    -fx-background-color: derive(-csim-bit-size-color-base, 20%);
+}
+
+.bit-size-box:pressed {
+    -fx-border-color: -csim-edit-text-color;
+}
+
+.bit-size-box:focused {
+    -fx-border-color: -csim-edit-text-color;
+}
+
+.bit-size-box.showing-dropdown {
+    -fx-border-color: -csim-edit-text-color;
+}
+
+/* Scale slider thumb */
+.slider .thumb {
+    -fx-background-color: -csim-thumb-border, -csim-thumb-base;
+    -fx-background-insets: 0, 1;
+    -fx-background-radius: 8, 7; /* optional rounding */
+}
+
+.slider .thumb:hover {
+    -fx-background-color: -csim-thumb-border, -csim-thumb-hover;
+}
+
+.slider .thumb:pressed {
+    -fx-background-color: -csim-thumb-border, -csim-thumb-pressed;
+}
+
+.accordion {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-spacing: 8px; /* space between panes */
+}
+
+/* TitledPane base */
+.titled-pane {
+    -fx-background-color: -csim-tilted-pane-base;
+    -fx-border-color: -csim-tilted-pane-base;
+    -fx-padding: 0;
+}
+
+
+/* Header / Control area */
+.titled-pane > .title {
+    -fx-background-color: white;
+    -fx-padding: 12px 16px;
+    -fx-font-size: 14px;
+    -fx-font-weight: 500;
+    -fx-border-color: -csim-tilted-pane-hover;
+    -fx-border-width: 0 0 2 0;
+}
+
+/* Hover effect */
+.titled-pane > .title:hover {
+    -fx-background-color: -csim-tilted-pane-hover;
+}
+
+/* Prevent movement during accordian animation */
+.titled-pane > .content {
+    -fx-padding: 12px 16px;
+    -fx-background-color: -csim-tilted-pane-open-base;
+    -fx-smooth: false;
+}
+
+/* Open panel */
+.titled-pane:expanded > .content {
+    -fx-background-color: -csim-tilted-pane-open-base;
+    -fx-padding: 12px 16px;
+}
+
+.titled-pane-first > .title {
+    -fx-background-radius: 16px 16px 0 0;
+    -fx-border-radius: 16px 16px 0 0;
+}
+
+.titled-pane-last > .title {
+    -fx-background-radius: 0 0 16px 16px;
+}
+
+.color-picker {
+    -fx-background-color: -csim-color-picker-base;
+    -fx-background-radius: 8 8 8 8;
+    -fx-border-width: 1 1 1 1;
+    -fx-border-color: -csim-color-picker-border;
+    -fx-border-radius: 8 8 8 8;
+}

@@ -221,7 +221,18 @@ public class Properties {
 	public static final Property<IntegerString> VALUE;
 	
 	public enum Direction {
-		NORTH, SOUTH, EAST, WEST
+		WEST("WEST"), NORTH("NORTH"), SOUTH("SOUTH"), EAST("EAST");
+
+		private final String str;
+
+		Direction(String str) {
+			this.str = str;
+		}
+
+		@Override
+		public String toString() {
+			return str;
+		}
 	}
 	
 	public enum Base {
