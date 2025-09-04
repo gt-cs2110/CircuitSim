@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -24,6 +25,8 @@ import com.ra4king.circuitsim.simulator.CircuitState;
 import com.ra4king.circuitsim.simulator.SimulationException;
 import com.ra4king.circuitsim.simulator.Simulator;
 
+import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
 import javafx.util.Pair;
@@ -61,6 +64,8 @@ public class CircuitBoard {
 	
 	private final EditHistory editHistory;
 	
+	private final BooleanProperty isTopLevel;
+
 	private static class MoveComputeResult {
 		final Set<Wire> wiresToAdd;
 		final Set<Wire> wiresToRemove;
@@ -85,6 +90,8 @@ public class CircuitBoard {
 		links = new HashSet<>();
 		
 		connectionsMap = new HashMap<>();
+
+		this.isTopLevel = new SimpleBooleanProperty(true);
 	}
 	
 	public String getName() {
@@ -136,8 +143,13 @@ public class CircuitBoard {
 		}
 		
 		currentState = state;
+		this.isTopLevel.setValue(currentState == circuit.getTopLevelState());
 	}
 	
+	public void onTopLevelChange(Consumer<? super Boolean> callback) {
+		this.isTopLevel.subscribe(callback);
+	}
+
 	public Set<ComponentPeer<?>> getComponents() {
 		return components;
 	}

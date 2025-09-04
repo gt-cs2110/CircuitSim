@@ -1905,6 +1905,11 @@ public class CircuitSim extends Application {
 			circuitManagers.put(canvasTab.getText(), new Pair<>(createSubcircuitLauncherInfo(revisedName), circuitManager));
 			canvasTabPane.getTabs().add(canvasTab);
 			
+			// Update tab status when top level status changes
+			circuitManager.getCircuitBoard().onTopLevelChange(tl -> {
+				canvasTab.getStyleClass().removeAll("top-level-indicator", "nested-state-indicator");
+				canvasTab.getStyleClass().add(tl ? "top-level-indicator" : "nested-state-indicator");
+			});
 			refreshCircuitsTab();
 			
 			editHistory.addAction(EditAction.CREATE_CIRCUIT,
@@ -2732,6 +2737,8 @@ public class CircuitSim extends Application {
 		scene = new Scene(new VBox(menuBar, toolBar, canvasPropsSplit));
 		scene.setCursor(Cursor.DEFAULT);
 		
+		scene.getStylesheets().add(getClass().getResource("/styles/style.css").toExternalForm());
+
 		updateTitle();
 		stage.setScene(scene);
 		stage.sizeToScene();
