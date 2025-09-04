@@ -67,15 +67,16 @@ import javafx.embed.swing.SwingFXUtils;
 import javafx.event.Event;
 import javafx.event.EventHandler;
 import javafx.geometry.Bounds;
+import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
-import javafx.geometry.Side;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.control.Accordion;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.ButtonBar.ButtonData;
@@ -102,6 +103,7 @@ import javafx.scene.control.TabPane.TabClosingPolicy;
 import javafx.scene.control.TabPane.TabDragPolicy;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextInputDialog;
+import javafx.scene.control.TitledPane;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.ToolBar;
@@ -118,10 +120,12 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
 import javafx.scene.input.ZoomEvent;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
@@ -174,7 +178,10 @@ public class CircuitSim extends Application {
 	private ComponentManager componentManager;
 	private Set<String> libraryPaths;
 	
-	private TabPane buttonTabPane;
+	/**
+	 * The panel on the left, which has all of the components in accordion sections.
+	 */
+	private Accordion componentDrawer;
 	private ToggleGroup buttonsToggleGroup;
 	private Runnable refreshComponentsTabs;
 	
@@ -187,7 +194,10 @@ public class CircuitSim extends Application {
 	private GridPane propertiesTable;
 	private Label componentLabel;
 	
-	private Tab circuitButtonsTab;
+	/**
+	 * Circuit section of the component accordion.
+	 */
+	private TitledPane circuitButtonsSection;
 	private Canvas circuitCanvas;
 	private ScrollPane canvasScrollPane;
 	private TabPane canvasTabPane;
@@ -771,34 +781,49 @@ public class CircuitSim extends Application {
 				modifiedSelection(null);
 			}
 		});
+		button.getStyleClass().add("new-component-btn");
 		GridPane.setHgrow(button, Priority.ALWAYS);
 		return button;
 	}
 	
+	/**
+	 * @return a titled pane, used for the component drawer
+	 */
+	private static TitledPane makeDrawerPane(String title) {
+		FlowPane flowPane = new FlowPane(Orientation.HORIZONTAL);
+		flowPane.setHgap(10.0);
+		flowPane.setVgap(10.0);
+		flowPane.setPrefHeight(Region.USE_COMPUTED_SIZE);
+		flowPane.setMinHeight(Region.USE_COMPUTED_SIZE);
+		flowPane.setMaxHeight(Region.USE_COMPUTED_SIZE);
+
+		VBox pane = new VBox(flowPane);
+		pane.prefHeightProperty().bind(flowPane.heightProperty());
+
+		TitledPane s = new TitledPane(title, pane);
+		s.getStyleClass().add("new-component-section");
+		return s;
+	}
+	private static FlowPane getDrawerPaneBody(TitledPane section) {
+		return (FlowPane) (((VBox) section.getContent()).getChildren().get(0));
+	}
+
 	void refreshCircuitsTab() {
 		if (loadingFile) {
 			return;
 		}
 		
 		Platform.runLater(() -> {
-			ScrollPane pane = new ScrollPane(new GridPane());
-			pane.setFitToWidth(true);
-			
-			if (circuitButtonsTab == null) {
-				circuitButtonsTab = new Tab("Circuits");
-				circuitButtonsTab.setClosable(false);
-				circuitButtonsTab.setContent(pane);
-				buttonTabPane.getTabs().add(circuitButtonsTab);
+			if (circuitButtonsSection == null) {
+				circuitButtonsSection = makeDrawerPane("Circuits");
+				componentDrawer.getPanes().add(circuitButtonsSection);
 			} else {
 				// Clear toggle groups, as they take up memory and don't get cleared automatically
-				GridPane buttons = (GridPane)((ScrollPane)circuitButtonsTab.getContent()).getContent();
-				buttons.getChildren().forEach(node -> {
-					ToggleButton button = (ToggleButton)node;
-					button.setToggleGroup(null);
-				});
-				buttons.getChildren().clear();
-				
-				circuitButtonsTab.setContent(pane);
+				var children = getDrawerPaneBody(circuitButtonsSection).getChildren();
+				for (Node n : children) {
+					((ToggleButton) n).setToggleGroup(null);
+				}
+				children.clear();
 			}
 			
 			// when requesting a tab to be closed, it still exists and thus its button could be created twice.
@@ -834,8 +859,7 @@ public class CircuitSim extends Application {
 				});
 				GridPane.setHgrow(toggleButton, Priority.ALWAYS);
 				
-				GridPane buttons = (GridPane)pane.getContent();
-				buttons.addRow(buttons.getChildren().size(), toggleButton);
+				getDrawerPaneBody(circuitButtonsSection).getChildren().add(toggleButton);
 			});
 		});
 	}
@@ -1983,8 +2007,7 @@ public class CircuitSim extends Application {
 		scaleFactorSlider.setMaxWidth(120);
 		scaleFactorSlider.valueProperty().addListener((observable, oldVal, newVal) -> needsRepaint = true);
 		
-		buttonTabPane = new TabPane();
-		buttonTabPane.setSide(Side.TOP);
+		componentDrawer = new Accordion();
 		
 		propertiesTable = new GridPane();
 		
@@ -2067,39 +2090,28 @@ public class CircuitSim extends Application {
 		});
 		
 		buttonsToggleGroup = new ToggleGroup();
-		Map<String, Tab> buttonTabs = new HashMap<>();
+		Map<String, TitledPane> componentSections = new HashMap<>();
 		
 		refreshComponentsTabs = () -> {
-			buttonTabPane.getTabs().clear();
-			buttonTabs.clear();
+			componentSections.clear();
 			
 			componentManager.forEach(componentInfo -> {
 				if (!componentInfo.showInComponentsList) {
 					return;
 				}
 				
-				Tab tab;
-				if (buttonTabs.containsKey(componentInfo.name.getKey())) {
-					tab = buttonTabs.get(componentInfo.name.getKey());
-				} else {
-					tab = new Tab(componentInfo.name.getKey());
-					tab.setClosable(false);
-					
-					ScrollPane pane = new ScrollPane(new GridPane());
-					pane.setFitToWidth(true);
-					
-					tab.setContent(pane);
-					buttonTabPane.getTabs().add(tab);
-					buttonTabs.put(componentInfo.name.getKey(), tab);
-				}
-				
-				GridPane buttons = (GridPane)((ScrollPane)tab.getContent()).getContent();
-				
+				TitledPane section = componentSections.computeIfAbsent(componentInfo.name.getKey(), k -> {
+					var pane = makeDrawerPane(k);
+					componentDrawer.getPanes().add(pane);
+					return pane;
+				});
 				ToggleButton toggleButton = setupButton(buttonsToggleGroup, componentInfo);
-				buttons.addRow(buttons.getChildren().size(), toggleButton);
+				VBox.setMargin(toggleButton, new Insets(20.0, 10.0, 20.0, 10.0));
+				getDrawerPaneBody(section).getChildren().add(toggleButton);
 			});
 			
-			circuitButtonsTab = null;
+			componentDrawer.getStyleClass().add("button-tab-pane");
+			circuitButtonsSection = null;
 			refreshCircuitsTab();
 		};
 		
@@ -2601,12 +2613,16 @@ public class CircuitSim extends Application {
 		propertiesBox.setAlignment(Pos.TOP_CENTER);
 		VBox.setVgrow(propertiesScrollPane, Priority.ALWAYS);
 		
-		SplitPane leftPaneSplit = new SplitPane(buttonTabPane, propertiesBox);
+		ScrollPane componentDrawerPane = new ScrollPane(componentDrawer);
+        componentDrawerPane.setFitToWidth(true);
+        componentDrawer.setMaxWidth(Double.MAX_VALUE);
+
+		SplitPane leftPaneSplit = new SplitPane(componentDrawerPane, propertiesBox);
 		leftPaneSplit.setOrientation(Orientation.VERTICAL);
 		leftPaneSplit.setPrefWidth(500);
 		leftPaneSplit.setMinWidth(150);
 		
-		SplitPane.setResizableWithParent(buttonTabPane, Boolean.FALSE);
+		SplitPane.setResizableWithParent(componentDrawer, Boolean.FALSE);
 		
 		fpsLabel = new Label();
 		fpsLabel.setMinWidth(100);
