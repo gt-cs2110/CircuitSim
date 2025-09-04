@@ -8,9 +8,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.math.RoundingMode;
 import java.nio.file.Files;
-import java.text.DecimalFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -96,14 +94,13 @@ import javafx.scene.control.RadioMenuItem;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
 import javafx.scene.control.SeparatorMenuItem;
+import javafx.scene.control.Slider;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TabPane.TabClosingPolicy;
 import javafx.scene.control.TabPane.TabDragPolicy;
 import javafx.scene.control.TextArea;
-import javafx.scene.control.TextField;
-import javafx.scene.control.TextFormatter;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
@@ -121,8 +118,6 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
 import javafx.scene.input.ZoomEvent;
-import javafx.scene.layout.Background;
-import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
@@ -140,7 +135,6 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import javafx.util.Pair;
-import javafx.util.StringConverter;
 
 /**
  * @author Roi Atalla
@@ -185,7 +179,7 @@ public class CircuitSim extends Application {
 	private Runnable refreshComponentsTabs;
 	
 	private ComboBox<Integer> bitSizeSelect;
-	private TextField scaleFactorInput;
+	private Slider scaleFactorSlider;
 	private Label fpsLabel;
 	private Label clockLabel;
 	private Label messageLabel;
@@ -366,26 +360,22 @@ public class CircuitSim extends Application {
 		return clickMode.isSelected();
 	}
 	
+	private static final double SCALE_MIN = 0.25;
+	private static final double SCALE_MAX = 4.0;
 	/**
 	 * Clamps the scale factor to between the minimum and maximum ranges.
 	 */
 	public static double clampScaleFactor(double scale) {
 		if (Double.isNaN(scale)) return 1.0;
-		final double SCALE_MIN = 0.25;
-		final double SCALE_MAX = 8;
 		return Math.min(Math.max(scale, SCALE_MIN), SCALE_MAX);
 	}
 
 	public double getScaleFactor() {
-		@SuppressWarnings("unchecked")
-		TextFormatter<Double> formatter = (TextFormatter<Double>) scaleFactorInput.getTextFormatter();
-		return formatter.getValue();
+		return scaleFactorSlider.getValue();
 	}
 	
 	public void setScaleFactor(double scale) {
-		@SuppressWarnings("unchecked")
-		TextFormatter<Double> formatter = (TextFormatter<Double>) scaleFactorInput.getTextFormatter();
-		formatter.setValue(CircuitSim.clampScaleFactor(scale));
+		scaleFactorSlider.setValue(CircuitSim.clampScaleFactor(scale));
 	}
 
 	public double getScaleFactorInverted() {
@@ -1987,36 +1977,11 @@ public class CircuitSim extends Application {
 			.selectedItemProperty()
 			.addListener((observable, oldValue, newValue) -> modifiedSelection(selectedComponent));
 		
-		scaleFactorInput = new TextField();
-		scaleFactorInput.setMaxWidth(80);
-		scaleFactorInput.setPrefWidth(80);
-		scaleFactorInput.setTextFormatter(new TextFormatter<>(
-			new StringConverter<>() {
-				@Override
-				public String toString(Double value) {
-					// Round to 2 decimal places.
-					if (value == null) return "";
-					DecimalFormat df = new DecimalFormat("0.0#");
-					df.setRoundingMode(RoundingMode.HALF_UP);
-					return value != null ? df.format(value) : "";
-				}
-
-				@Override
-				public Double fromString(String value) {
-					if (value != null && !value.isBlank()) {
-						return CircuitSim.clampScaleFactor(Double.valueOf(value));
-					}
-
-					return 1.0;
-				}
-
-			},
-			1.0, 
-			change -> change.getControlNewText().matches("\\d*(?:\\.\\d*)?") ? change : null
-		));
-		scaleFactorInput.getTextFormatter().valueProperty().addListener((observable, oldValue, newValue) -> {
-			needsRepaint = true;
-		});
+		scaleFactorSlider = new Slider(SCALE_MIN, SCALE_MAX, 1.0);
+		scaleFactorSlider.setShowTickLabels(false);
+		scaleFactorSlider.setShowTickMarks(false);
+		scaleFactorSlider.setMaxWidth(120);
+		scaleFactorSlider.valueProperty().addListener((observable, oldVal, newVal) -> needsRepaint = true);
 		
 		buttonTabPane = new TabPane();
 		buttonTabPane.setSide(Side.TOP);
@@ -2678,6 +2643,8 @@ public class CircuitSim extends Application {
 		Function<Pair<String, String>, ToggleButton> createToolbarButton = pair -> {
 			ComponentLauncherInfo info = componentManager.get(pair);
 			ToggleButton button = new ToggleButton("", setupImageView(info.image));
+			VBox.setMargin(button, new Insets(8.0));
+            button.getStyleClass().add("toolbar-button");
 			button.setTooltip(new Tooltip(pair.getValue()));
 			button.setMinWidth(50);
 			button.setMinHeight(50);
@@ -2707,7 +2674,23 @@ public class CircuitSim extends Application {
 		clickMode
 			.selectedProperty()
 			.addListener((observable, oldValue, newValue) -> scene.setCursor(newValue ? Cursor.HAND : Cursor.DEFAULT));
-		
+
+
+		// Global bitsize box
+		Label bitSizeLabel = new Label("Global bit size:");
+		bitSizeLabel.getStyleClass().add("bit-size-label");
+		bitSizeSelect.getStyleClass().add("bit-size-dropdown");
+		HBox bitSizeBox = new HBox(bitSizeLabel, bitSizeSelect);
+		bitSizeBox.getStyleClass().add("bit-size-box");
+		bitSizeBox.setOnMouseClicked(e -> bitSizeSelect.show());
+		// no :has() D:
+		bitSizeSelect.setOnShowing(e -> {
+			bitSizeBox.getStyleClass().add("showing-dropdown");
+		});
+		bitSizeSelect.setOnHidden(e -> {
+			bitSizeBox.getStyleClass().remove("showing-dropdown");
+		});
+
 		Pane blank = new Pane();
 		HBox.setHgrow(blank, Priority.ALWAYS);
 		
@@ -2722,11 +2705,10 @@ public class CircuitSim extends Application {
 		                          tunnelButton,
 		                          textButton,
 		                          new Separator(Orientation.VERTICAL),
-		                          new Label("Global bit size:"),
-		                          bitSizeSelect,
+		                          bitSizeBox,
 		                          blank,
 		                          new Label("Scale:"),
-		                          scaleFactorInput);
+		                          scaleFactorSlider);
 		
 		VBox.setVgrow(canvasPropsSplit, Priority.ALWAYS);
 		scene = new Scene(new VBox(menuBar, toolBar, canvasPropsSplit));
