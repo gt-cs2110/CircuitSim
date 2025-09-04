@@ -6,7 +6,7 @@ import java.util.regex.Pattern;
 public final class CircuitSimVersion implements Comparable<CircuitSimVersion> {
 	private static final Pattern VERSION_PATTERN = Pattern.compile("(\\d+)\\.(\\d+)\\.(\\d+)(b?)");
 	
-	public static final CircuitSimVersion VERSION = new CircuitSimVersion("1.10.0-CE");
+	public static final CircuitSimVersion VERSION = new CircuitSimVersion("1.11.2-CE");
 
 	private final String version;
 	private final int major;
